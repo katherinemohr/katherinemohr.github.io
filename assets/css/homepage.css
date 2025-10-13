@@ -1,13 +1,29 @@
 /* Homepage-specific styles */
 
+/* Hide theme elements and remove all spacing */
+header,
+header + ul {
+  display: none !important;
+}
+
+/* Reset all theme spacing */
+html, body, main, .page-content, .page-content .w {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+}
+
 /* Main Layout */
 .main-layout {
   display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 3rem;
-  max-width: 1200px;
+  grid-template-columns: 35% 65%;
+  gap: 4rem;
+  width: 90vw;
+  max-width: none;
   margin: 0 auto;
   padding: 2rem;
+  box-sizing: border-box;
 }
 
 /* Sidebar */
@@ -40,13 +56,19 @@
 }
 
 .about-blurb {
-  flex: 1;
-  font-size: 1.1rem;
+  font-size: 1rem;
   line-height: 1.6;
+  text-align: left;
 }
 
 .contact-links {
-  margin-bottom: 2rem;
+  margin-top: 2rem;
+}
+
+.contact-links h3 {
+  margin-bottom: 1rem;
+  color: #333;
+  font-size: 1.2rem;
 }
 
 .contact-links ul {
@@ -55,17 +77,24 @@
 }
 
 .contact-links li {
-  margin-bottom: 0.5rem;
-  font-size: 1.1rem;
+  margin-bottom: 0.8rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
 }
 
 .contact-links a {
-  color: #007acc;
+  color: #0066cc !important;
   text-decoration: none;
 }
 
 .contact-links a:hover {
   text-decoration: underline;
+}
+
+/* Main Content */
+.main-content h2 {
+  margin-bottom: 2rem;
+  color: #333;
 }
 
 .recent-posts {
@@ -92,7 +121,7 @@
 }
 
 .post-preview h3 a:hover {
-  color: #007acc;
+  color: #0066cc !important;
 }
 
 .post-date {
@@ -112,7 +141,7 @@
 }
 
 .view-all-posts a {
-  color: #007acc;
+  color: #0066cc !important;
   text-decoration: none;
   font-weight: bold;
   font-size: 1.1rem;
@@ -122,15 +151,39 @@
   text-decoration: underline;
 }
 
-/* Mobile responsiveness */
+/* Tablet responsiveness */
+@media (max-width: 1024px) {
+  .main-layout {
+    width: 90vw;
+    gap: 3rem;
+    padding: 1.5rem;
+  }
+}
+
+/* Mobile responsiveness (smartphones) */
 @media (max-width: 768px) {
-  .profile-section {
-    flex-direction: column;
-    text-align: center;
+  .main-layout {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    padding: 1rem;
+  }
+  
+  .sidebar {
+    position: static;
+    order: 2;
+    margin-top: 2rem;
+  }
+  
+  .main-content {
+    order: 1;
   }
   
   .profile-image {
     width: 120px;
     height: 120px;
+  }
+  
+  .name {
+    font-size: 1.3rem;
   }
 }

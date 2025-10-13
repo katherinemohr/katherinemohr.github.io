@@ -18,7 +18,7 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 
-title: Katherine Mohr's site
+title: Katherine Mohr
 email: kmohr@cs.stanford.edu
 description: Hey there! I'm Katherine, a first-year PhD at Stanford. Welcome to my site.
 baseurl: "" # the subpath of your site, e.g. /blog

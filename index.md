@@ -10,10 +10,10 @@ layout: home
     <div class="profile-section">
       <div class="profile-photo">
         <!-- Add your profile photo here -->
-        <img src="/assets/images/profile.jpg" alt="Profile Photo" class="profile-image">
+        <img src="/assets/images/pfp.jpg" alt="me in my favorite city! (cambridge, ma)" class="profile-image">
       </div>
       
-      <h1 class="name">{{ site.title | replace: "'s site", "" }}</h1>
+      <h1 class="name">{{ site.title }}</h1>
       
       <div class="about-blurb">
         <p>{{ site.description }}</p>
@@ -35,18 +35,19 @@ layout: home
   <main class="main-content">
     <h2>Recent Blog Posts</h2>
 
-<div class="recent-posts">
-  {% assign recent_posts = site.posts | limit: 5 %}
-  {% for post in recent_posts %}
-    <div class="post-preview">
-      <h3><a href="{{ post.url }}">{{ post.title }}</a></h3>
-      <p class="post-date">{{ post.date | date: "%B %d, %Y" }}</p>
-      <p class="post-excerpt">{{ post.excerpt | strip_html | truncatewords: 30 }}</p>
-    </div>
-  {% endfor %}
-  
-    <div class="view-all-posts">
-      <a href="/jekyll/update/">View All Posts →</a>
+    <div class="recent-posts">
+      {% assign recent_posts = site.posts | limit: 5 %}
+      {% for post in recent_posts %}
+        <div class="post-preview">
+          <h3><a href="{{ post.url }}">{{ post.title }}</a></h3>
+          <p class="post-date">{{ post.date | date: "%B %d, %Y" }}</p>
+          <p class="post-excerpt">{{ post.excerpt | strip_html | truncatewords: 30 }}</p>
+        </div>
+      {% endfor %}
+      
+      <div class="view-all-posts">
+        <a href="/jekyll/update/">View All Posts →</a>
+      </div>
     </div>
   </main>
 </div>
