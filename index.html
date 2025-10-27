@@ -1,0 +1,140 @@
+---
+layout: default
+---
+
+<article>
+  <table style="width: 55%;">
+    <tr>
+      <td style="padding-right: 20px; width: 30%;">
+        <img src="/assets/images/profile2025.png" alt="Katherine Mohr" style="max-width: 13em; height: auto; border-radius: 4px;">
+      </td>
+      <td>
+        <h2>Katherine Mohr</h2>
+        <p style="font-size: .95em; color: #666; margin: 0 0 0.5em 0;">
+          <a href="mailto:kmohr@cs.stanford.edu">kmohr@cs.stanford.edu</a> /
+          <a href="https://www.linkedin.com/in/katherinemohr">LinkedIn</a> /
+          <a href="assets/Katherine_Mohr_Resume.pdf">Resume</a> /
+          <a href="https://www.twitter.com/kmohr_">Twitter</a>
+        </p>
+        <p>
+          Hello! I'm Katherine.
+          I'm a first year PhD student in Computer Science at Stanford University. 
+        </p>
+      </td>
+      
+    </tr>
+  </table>
+  <section>
+    <p style="margin-top: 0;">
+      I'm broadly interested in programming languages, compilers, networking, and computer architecture, 
+      and I'm currently rotating with <a href="https://cs.stanford.edu/~keithw/">Keith Winstein</a> to explore new methods of serverless compute. 
+      <br/>
+      <br/>
+      Before coming to Stanford, I majored in Electrical Engineering and Computer Science at MIT (with a strong emphasis on the computer science side of that),
+      where I was advised by some incredible people, including
+      <a href="https://people.csail.mit.edu/saman/">Prof Saman Amarasinghe</a>,
+      <a href="https://people.csail.mit.edu/jrk/">Prof Jonathan Ragan-Kelley</a>,
+      <a href="https://intimeand.space">Ajay Brahmakshatriya</a>, and
+      <a href="https://ajroot.pl">AJ Root</a>,
+      as well as many others in a less official capacity.
+
+      I also spent some time before grad school working at Five Rings Capital.
+      <br/>
+      <br/>
+      All the cool kids have blogs, so I'm trying this thing out. 
+      If this blog looks familiar, it's because it is blatantly stolen from <a href="https://www.micahlerner.com">Micah Lerner</a>'s excellent blog. 
+      You should probably go check that out instead.
+    </p>
+  </section>
+  <!-- <section class="main-signup"> TODO: become big enough to need this
+    <form
+      action="https://gmail.us20.list-manage.com/subscribe/post?u=d1654f70a6addb0e9ce8afd83&amp;id=bab65ed2b1"
+      method="post"
+      id="mc-embedded-subscribe-form"
+      name="mc-embedded-subscribe-form"
+      class="validate"
+      target="_blank"
+      novalidate
+    >
+      <label for="mce-EMAIL">
+        <h3 class="fw8 f5 ttu mt0 mb1">Get essays a bit faster</h3>
+      </label>
+      <p id="mce-email-describe" class="mt0">
+        I write about computer science papers on a recurring basis, mostly from
+        the fields of distributed systems, operating systems, and computer
+        security. I also publish blog updates
+        <a href="https://twitter.com/micahlerner">on Twitter</a> and via
+        <a href="/feed.xml">Atom feed</a>.
+      </p>
+
+      <div id="mc_embed_signup_scroll">
+        <div>
+          <input
+            type="email"
+            value=""
+            name="EMAIL"
+            class="email"
+            id="tlemail"
+            placeholder="email address"
+            required
+          />
+          <div style="position: absolute; left: -5000px" aria-hidden="true">
+            <input
+              type="text"
+              name="b_d1654f70a6addb0e9ce8afd83_bab65ed2b1"
+              tabindex="-1"
+              value=""
+            />
+          </div>
+          <input
+            type="submit"
+            value="Subscribe"
+            name="subscribe"
+            id="mc-embedded-subscribe"
+            class="button"
+          />
+        </div>
+      </div>
+    </form>
+  </section> -->
+  <section>
+    <div style="padding-top: 20px">
+      <h3>Recent writing</h3>
+      <ul style="list-style: none; padding-left: 0px">
+        {% for post in site.posts %} {% unless post.draft or post.paid %}
+        <li>
+          <p>
+            <a href="{{post.url}}">{{post.title}}</a> - {{ post.date | date: '%B
+            %d, %Y' }} {% if post.hn.size > 0 %}
+            <a href="{{post.hn}}" class="hn" style="text-decoration: none">
+              <img
+                class="hn-image"
+                src="/assets/y18.gif"
+                style="border: 1px white solid"
+                width="18"
+                height="18"
+              />
+            </a>
+            {% endif %}
+          </p>
+        </li>
+        {% endunless %} {% endfor %}
+      </ul>
+    </div>
+    <div style="padding-top: 20px">
+      <h3>Recent fragments</h3>
+      <ul style="list-style: none; padding-left: 0px">
+        {% for post in site.fragments reversed %} {% unless post.tags contains
+        'draft' %}
+        <li>
+          <p>
+            <a href="{{post.url}}">{{post.title}}</a> - {{ post.date | date: '%B
+            %d, %Y' }}
+          </p>
+          <!-- <p>Published {{ post.date | date: '%B %d, %Y' }} </p> -->
+        </li>
+        {% endunless %} {% endfor %}
+      </ul>
+    </div>
+  </section>
+</article>
