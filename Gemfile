@@ -9,4 +9,3 @@ gem "jekyll-github-metadata"
 gem 'nokogiri'
 gem 'rouge'
 gem "webrick", "~> 1.7"
-gem "github-pages"
