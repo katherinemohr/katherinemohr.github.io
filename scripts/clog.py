@@ -10,17 +10,15 @@ This script will:
 2. Confirm the title with the user
 3. Optionally ask for notes about the link
 4. Add an entry to _db/clog.db with Link, Title, Type, Authors, Notes, and AddedAt (UTC)
-5. Git commit and push the changes (unless --no-commit is specified)
+5. Git commit and push the changes (only if --commit is specified)
 """
 
 import argparse
 import datetime
 import os
-import re
 import sqlite3
 import subprocess
 import sys
-from enum import EnumType
 from urllib.parse import urlparse
 
 import bibtexparser
@@ -194,7 +192,7 @@ def main():
         epilog="""
 Examples:
   python clog.py https://example.com
-  python clog.py example.com --no-commit
+  python clog.py example.com --commit
   python clog.py https://example.com -t blog
   python clog.py BIBTEX_ENTRY --type paper
         """,
@@ -209,7 +207,7 @@ Examples:
         help="Type of entry (default: post)",
     )
     parser.add_argument(
-        "--no-commit", action="store_true", help="Don't commit and push changes to git"
+        "--commit", action="store_true", help="Commit and push changes to git"
     )
 
     args = parser.parse_args()
@@ -276,8 +274,8 @@ Examples:
         print(f"Error adding entry to database: {e}")
         sys.exit(1)
 
-    # Git commit and push (unless --no-commit is specified)
-    if not args.no_commit:
+    # Git commit and push (only if --commit is specified)
+    if args.commit:
         git_commit_and_push(db_path)
         print("Clog entry successfully added and pushed!")
     else:
