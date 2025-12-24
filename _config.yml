@@ -1,4 +1,4 @@
-author: 'Katherine Mohr'
+author: "Katherine Mohr"
 title: "katherinemohr.github.io" # TODO: connect to cs.stanford.edu domain
 url: "https://katherinemohr.github.io"
 repository: "katherinemohr/katherinemohr.github.io"
@@ -6,9 +6,13 @@ plugins:
   - jekyll-feed
   - jekyll-sitemap
   - "jekyll-github-metadata"
-feed: 
+  - jekyll_sqlite
+exclude:
+  - _db
+  - _plugins
+feed:
   collections:
-    posts: 
+    posts:
       path: "/feed.xml"
 collections:
   fragments:
@@ -16,9 +20,21 @@ collections:
     permalink: /:collection/:title
   drafts:
     output: true
+  other:
+    output: true
+    permalink: /:title
+sqlite:
+  - data: posts
+    file: &db "_db/clog.db"
+    query: SELECT Link, Title, Notes, AddedAt FROM clog WHERE Type = 'post'
+  - data: blogs
+    file: *db
+    query: SELECT Link, Title, Notes, AddedAt FROM clog WHERE Type = 'blog'
+  - data: papers
+    file: *db
+    query: SELECT Link, Title, Authors, Notes, AddedAt FROM clog where Type = 'paper'
 defaults:
-  -
-    scope:
+  - scope:
       path: ""
     values:
       default_intro: "In the arena, trying to write some things sometimes."

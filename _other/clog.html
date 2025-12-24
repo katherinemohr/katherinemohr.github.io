@@ -1,0 +1,115 @@
+---
+layout: default
+title: "clog - Katherine Mohr"
+---
+
+<article>
+  <section>
+    <header>
+      <a href="/">
+        <h3>katherinemohr.github.io</h3>
+      </a>
+    </header>
+  </section>
+
+  <h1 style="margin-bottom: 0;">Collected Logs</h1>
+  <section>
+      <p style="margin-top: 0; margin-bottom: 0;">
+        <span id="tab-posts" class="tab-button active" onclick="showTab('posts')">posts</span> /
+        <span id="tab-blogs" class="tab-button" onclick="showTab('blogs')">blogs</span> /
+        <span id="tab-papers" class="tab-button" onclick="showTab('papers')">papers</span>
+      </p>
+  </section>
+
+  <!-- Posts tab content -->
+  <section id="content-posts" class="tab-content" style="margin-top: 0;">
+    <ul style="list-style: none; padding-left: 0px; width: 87.5%;">
+    {% for post in site.data.posts reversed %}
+    <li>
+      <p style="display: flex; justify-content: space-between; align-items: baseline; margin: 0.25em 0.5em 0.25em 0;">
+        <span>
+          <a href={{post.Link}}>{{post.Title}}</a>
+          {% if post.Notes %}
+          <span style="font-size: .7em; color: #888;"> / {{post.Notes}} </span>
+          {% endif %}
+        </span>
+        <span>{{post.AddedAt | date: "%m-%d-%y" }}</span>
+      </p>
+    </li>
+    {% endfor %}
+    </ul>
+  </section>
+
+  <!-- Blogs tab content -->
+  <section id="content-blogs" class="tab-content" style="display: none;">
+    <ul style="list-style: none; padding-left: 0px; width: 87.5%;">
+    {% for blog in site.data.blogs reversed %}
+    <li>
+      <p style="display: flex; justify-content: space-between; align-items: baseline; margin: 0.25em 0.5em 0.25em 0;">
+        <span>
+          <a href={{blog.Link}}>{{blog.Title}}</a>
+          {% if blog.Notes %}
+          <span style="font-size: .7em; color: #888;"> / {{blog.Notes}} </span>
+          {% endif %}
+        </span>
+        <span>{{blog.AddedAt | date: "%m-%d-%y" }}</span>
+      </p>
+    </li>
+    {% endfor %}
+    </ul>
+  </section>
+
+  <!-- Papers tab content -->
+  <section id="content-papers" class="tab-content" style="display: none;">
+    <ul style="list-style: none; padding-left: 0px; width: 87.5%;">
+    {% for paper in site.data.papers reversed %}
+    <li>
+      <p style="display: flex; justify-content: space-between; align-items: baseline; margin: 0.25em 0.5em 0.25em 0;">
+        <span>
+          <a href={{paper.Link}}>{{paper.Title}}</a>
+          <br>
+          <i>{{paper.Authors}}</i>
+
+          {% if paper.Notes %}
+          <span style="font-size: .7em; color: #888;"> / {{paper.Notes}} </span>
+          {% endif %}
+        </span>
+        <span>{{paper.AddedAt | date: "%m-%d-%y" }}</span>
+      </p>
+    </li>
+    {% endfor %}
+    </ul>
+  </section>
+</article>
+
+<script>
+function showTab(tabName) {
+  // Hide all tab contents
+  const tabContents = document.querySelectorAll('.tab-content');
+  tabContents.forEach(content => {
+    content.style.display = 'none';
+  });
+
+  // Remove active class from all tabs
+  const tabButtons = document.querySelectorAll('.tab-button');
+  tabButtons.forEach(button => {
+    button.style.fontWeight = 'normal';
+    button.style.color = '#666';
+    button.classList.remove('active');
+  });
+
+  // Show selected tab content
+  document.getElementById(`content-${tabName}`).style.display = 'block';
+
+  // Add active class to selected tab
+  const activeButton = document.getElementById(`tab-${tabName}`);
+  activeButton.style.fontWeight = 'bold';
+  activeButton.style.color = '#111';
+  activeButton.classList.add('active');
+}
+
+// Initialize the page with posts tab active
+document.addEventListener('DOMContentLoaded', function() {
+  showTab('posts');
+});
+</script>

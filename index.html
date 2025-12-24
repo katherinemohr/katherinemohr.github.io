@@ -18,16 +18,16 @@ layout: default
         </p>
         <p>
           Hello! I'm Katherine.
-          I'm a first year PhD student in Computer Science at Stanford University. 
+          I'm a first year PhD student in Computer Science at Stanford University.
         </p>
       </td>
-      
+
     </tr>
   </table>
   <section>
     <p style="margin-top: 0;">
-      I'm broadly interested in programming languages, compilers, networking, and computer architecture, 
-      and I'm currently rotating with <a href="https://cs.stanford.edu/~keithw/">Keith Winstein</a> to explore new methods of serverless compute. 
+      I'm broadly interested in programming languages, compilers, networking, and computer architecture,
+      and I'm currently rotating with <a href="https://cs.stanford.edu/~keithw/">Keith Winstein</a> to explore new methods of serverless compute.
       <br/>
       <br/>
       Before coming to Stanford, I majored in Electrical Engineering and Computer Science at MIT (with a strong emphasis on the computer science side of that),
@@ -38,11 +38,11 @@ layout: default
       <a href="https://ajroot.pl">AJ Root</a>,
       as well as many others in a less official capacity.
 
-      I also spent some time before grad school working at Five Rings Capital.
+      I also spent some time before grad school working at <a href="https://fiverings.com">Five Rings Capital</a>.
       <br/>
       <br/>
-      All the cool kids have blogs, so I'm trying this thing out. 
-      If this blog looks familiar, it's because it is blatantly stolen from <a href="https://www.micahlerner.com">Micah Lerner</a>'s excellent blog. 
+      All the cool kids have blogs, so I'm trying this thing out.
+      If this blog looks familiar, it's because it is blatantly stolen from <a href="https://www.micahlerner.com">Micah Lerner</a>'s excellent blog.
       You should probably go check that out instead.
     </p>
   </section>
@@ -99,7 +99,11 @@ layout: default
   </section> -->
   <section>
     <div style="padding-top: 20px">
-      <h3>Recent writing</h3>
+      <h3>Blog</h3>
+      <p style="font-size: .95em; color: #666; margin: 0 0 0.5em 0;">
+        See also:
+        <a href="clog.html">clog</a>
+      </p>
       <ul style="list-style: none; padding-left: 0px">
         {% for post in site.posts %} {% unless post.draft or post.paid %}
         <li>
@@ -121,7 +125,7 @@ layout: default
         {% endunless %} {% endfor %}
       </ul>
     </div>
-    <div style="padding-top: 20px">
+    <!--<div style="padding-top: 20px">
       <h3>Recent fragments</h3>
       <ul style="list-style: none; padding-left: 0px">
         {% for post in site.fragments reversed %} {% unless post.tags contains
@@ -135,6 +139,6 @@ layout: default
         </li>
         {% endunless %} {% endfor %}
       </ul>
-    </div>
+    </div>-->
   </section>
 </article>
