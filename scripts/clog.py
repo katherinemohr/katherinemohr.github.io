@@ -9,7 +9,7 @@ This script will:
 1. Fetch the title of the provided URL
 2. Confirm the title with the user
 3. Optionally ask for notes about the link
-4. Add an entry to _db/clog.db with Link, Title, Type, Authors, Notes, and AddedAt (UTC)
+4. Add an entry to _db/clog.db with Link, Title, Type, Authors, Notes, and AddedAt
 5. Git commit and push the changes (only if --commit is specified)
 """
 
@@ -132,9 +132,7 @@ def add_entry(
     db_path, link, title, entry_type="post", authors=None, bibtex=None, notes=None
 ):
     """Add a new entry to the clog database."""
-    current_utc = datetime.datetime.now(datetime.timezone.utc).strftime(
-        "%Y-%m-%d %H:%M:%S UTC"
-    )
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -143,7 +141,7 @@ def add_entry(
         """
         INSERT INTO clog (Link, Title, Type, Authors, Bibtex, Notes, AddedAt) VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (link, title, entry_type, authors, bibtex, notes, current_utc),
+        (link, title, entry_type, authors, bibtex, notes, current_time),
     )
 
     conn.commit()
@@ -152,7 +150,7 @@ def add_entry(
     authors_display = f" by {authors}" if authors else ""
     notes_display = f" with notes: {notes}" if notes else ""
     print(
-        f"Added entry [{entry_type}]: {title}{authors_display} -> {link} at {current_utc}{notes_display}"
+        f"Added entry [{entry_type}]: {title}{authors_display} -> {link} at {current_time}{notes_display}"
     )
 
 
