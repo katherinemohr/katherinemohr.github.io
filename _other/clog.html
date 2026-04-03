@@ -17,7 +17,8 @@ title: "clog - Katherine Mohr"
       <p style="margin-top: 0; margin-bottom: 0;">
         <span id="tab-posts" class="tab-button active" onclick="showTab('posts')">posts</span> /
         <span id="tab-blogs" class="tab-button" onclick="showTab('blogs')">blogs</span> /
-        <span id="tab-papers" class="tab-button" onclick="showTab('papers')">papers</span>
+        <span id="tab-papers" class="tab-button" onclick="showTab('papers')">papers</span> /
+        <span id="tab-unread" class="tab-button" onclick="showTab('unread')">unread</span>
       </p>
   </section>
 
@@ -75,6 +76,26 @@ title: "clog - Katherine Mohr"
           {% endif %}
         </span>
         <span>{{paper.AddedAt | date: "%m-%d-%y" }}</span>
+      </p>
+    </li>
+    {% endfor %}
+    </ul>
+  </section>
+
+  <!-- Reading List tab content -->
+  <section id="content-unread" class="tab-content" style="display: none; margin-bottom: 0;">
+    <span style="font-size: .7em; color: #888; display: block; margin-top: 0;"> all the unopened tabs I should get to</span>
+    <ul style="list-style: none; padding-left: 0px; width: 87.5%;">
+    {% for item in site.data.unread reversed %}
+    <li>
+      <p style="display: flex; justify-content: space-between; align-items: baseline; margin: 0.25em 0.5em 0.25em 0; font-size: 0.85em;">
+        <span>
+          <a href={{item.Link}}>{{item.Title}}</a>
+          <!--{% if item.Notes %}
+          <span style="font-size: .7em; color: #888;"> / {{item.Notes}} </span>
+          {% endif %}-->
+        </span>
+        <span>{{item.AddedAt | date: "%m-%d-%y" }}</span>
       </p>
     </li>
     {% endfor %}

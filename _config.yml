@@ -32,7 +32,10 @@ sqlite:
     query: SELECT Link, Title, Notes, AddedAt FROM clog WHERE Type = 'blog'
   - data: papers
     file: *db
-    query: SELECT Link, Title, Authors, Notes, AddedAt FROM clog where Type = 'paper'
+    query: SELECT Link, Title, Authors, Notes, AddedAt FROM clog WHERE Type = 'paper'
+  - data: unread
+    file: *db
+    query: SELECT Link, Title, AddedAt FROM unread WHERE Active = 1
 defaults:
   - scope:
       path: ""

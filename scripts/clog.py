@@ -107,7 +107,7 @@ def get_bibtex():
 
 
 def init_database(db_path):
-    """Initialize the database with the required table if it doesn't exist."""
+    """Initialize the database with the required tables if they don't exist."""
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
@@ -120,6 +120,16 @@ def init_database(db_path):
             Authors TEXT,
             Bibtex TEXT,
             Notes TEXT,
+            AddedAt TEXT NOT NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS unread (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            Link TEXT NOT NULL UNIQUE,
+            Title TEXT NOT NULL,
+            Active INTEGER NOT NULL DEFAULT 1,
             AddedAt TEXT NOT NULL
         )
     """)
@@ -154,6 +164,90 @@ def add_entry(
     )
 
 
+def update_unread_list(db_path, entries):
+    """Update the unread table based on the provided list of (title, link) entries.
+
+    For every entry in the list:
+    1. If the link isn't already present in the unread table, add a new row with Active=1.
+    2. If the link is present in the table, mark it active and update the title.
+    3. For all rows in the table that were not accessed, set Active to 0.
+    """
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # unread table is created in init_database
+
+    # Normalize entries (strip whitespace and drop empties)
+    normalized_entries = []
+    for title, link in entries:
+        title = (title or "").strip()
+        link = (link or "").strip()
+        if not link:
+            continue
+        if not title:
+            title = link
+        normalized_entries.append((title, link))
+
+    # Track which links we touched
+    touched_links = set()
+
+    for title, link in normalized_entries:
+        # See if link already exists
+        cursor.execute("SELECT id FROM unread WHERE Link = ?", (link,))
+        row = cursor.fetchone()
+        if row is None:
+            # Insert new row as active with provided title
+            cursor.execute(
+                """
+                INSERT INTO unread (Link, Title, Active, AddedAt)
+                VALUES (?, ?, 1, ?)
+                """,
+                (link, title, current_time),
+            )
+        else:
+            # Row exists: mark as active and refresh title
+            cursor.execute(
+                """
+                UPDATE unread
+                SET Active = 1,
+                    Title = ?
+                WHERE Link = ?
+                """,
+                (title, link),
+            )
+
+        touched_links.add(link)
+
+    # Deactivate all rows not touched in this run
+    if touched_links:
+        # Use a parameterized NOT IN clause; only touch rows that are currently active
+        placeholders = ",".join("?" for _ in touched_links)
+        params = list(touched_links)
+        cursor.execute(
+            f"""
+            UPDATE unread
+            SET Active = 0
+            WHERE Active = 1
+              AND Link NOT IN ({placeholders})
+            """,
+            params,
+        )
+    else:
+        # No entries: deactivate everything that is currently active
+        cursor.execute(
+            """
+            UPDATE unread
+            SET Active = 0
+            WHERE Active = 1
+            """
+        )
+
+    conn.commit()
+    conn.close()
+
+
 def git_commit_and_push(db_path):
     """Git commit and push the database file."""
     try:
@@ -185,7 +279,7 @@ def git_commit_and_push(db_path):
 def main():
     """Main function to orchestrate the clog entry process."""
     parser = argparse.ArgumentParser(
-        description="Add website entries to the clog database",
+        description="Add website entries to the clog database or manage the unread list",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -193,6 +287,19 @@ Examples:
   python clog.py example.com --commit
   python clog.py https://example.com -t blog
   python clog.py BIBTEX_ENTRY --type paper
+
+  # Unread mode: paste Safari-style Title/Link pairs, end with EOF (Ctrl-D)
+  # Example:
+  #
+  #   random
+  #
+  #   Some Title
+  #   https://example.com
+  #
+  #   Another Title
+  #   https://example.org
+  #
+  python clog.py --type unread
         """,
     )
 
@@ -200,7 +307,7 @@ Examples:
     parser.add_argument(
         "-t",
         "--type",
-        choices=["post", "blog", "paper"],
+        choices=["post", "blog", "paper", "unread"],
         default="post",
         help="Type of entry (default: post)",
     )
@@ -214,6 +321,70 @@ Examples:
     # Get the database path relative to the script location
     script_dir = os.path.dirname(os.path.abspath(__file__))
     db_path = os.path.join(os.path.dirname(script_dir), "_db", "clog.db")
+
+    # Initialize database (creates tables if needed)
+    init_database(db_path)
+
+    # Handle unread list updates
+    if args.type == "unread":
+        print(
+            "Paste Safari tab group export (Title/Link pairs). Press Ctrl-D (EOF) when done:"
+        )
+        stdin_data = sys.stdin.read()
+        lines = [line.strip() for line in stdin_data.splitlines()]
+
+        entries = []
+        i = 0
+
+        # Ignore leading blank lines and a single group name line (e.g., "random")
+        while i < len(lines) and lines[i] == "":
+            i += 1
+        if i < len(lines) and lines[i] != "":
+            # Treat this as the tab group name and skip it
+            i += 1
+
+        # Expect Title/Link pairs separated by blank lines
+        while i < len(lines):
+            # Skip any extra blank lines between entries
+            while i < len(lines) and lines[i] == "":
+                i += 1
+            if i >= len(lines):
+                break
+
+            title = lines[i]
+            i += 1
+
+            # Skip blank lines between title and link
+            while i < len(lines) and lines[i] == "":
+                i += 1
+            if i >= len(lines):
+                break
+
+            link = lines[i]
+            i += 1
+
+            entries.append((title, link))
+
+        # Fallback: if nothing parsed but an input value was provided, treat it as a single link
+        if not entries and input_value:
+            entries = [(input_value, input_value)]
+
+        if not entries:
+            print("No Title/Link pairs provided for unread update. Exiting.")
+            sys.exit(1)
+
+        try:
+            update_unread_list(db_path, entries)
+        except Exception as e:
+            print(f"Error updating unread list: {e}")
+            sys.exit(1)
+
+        if args.commit:
+            git_commit_and_push(db_path)
+            print("Unread list successfully updated and pushed!")
+        else:
+            print("Unread list successfully updated (not committed to git)!")
+        return
 
     # Handle papers differently
     if args.type == "paper":
@@ -261,9 +432,6 @@ Examples:
 
     # Get optional notes
     notes = get_notes()
-
-    # Initialize database (creates table if needed)
-    init_database(db_path)
 
     # Add entry to database
     try:
