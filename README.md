@@ -10,4 +10,4 @@ The first step in making changes to the site is running `bundle install`. This a
 
 To start the Jekyll server locally, you can run `bundle exec jekyll serve -l -o`. See the [Jekyll docs](https://jekyllrb.com/docs/usage/) for more on usage.
 
-To publish changes (assuming you have permissions, which most people will not), run `bundle exec rake publish`.
+To publish changes, just push to Github and an action will republish the site.
