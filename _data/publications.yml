@@ -1,0 +1,27 @@
+arca:
+  title: "Continuation-Centric Computing with Arca"
+  abstract: "<p>
+    This paper presents continuation-centric computing, an op- erating system design paradigm for “serverless”-style work- loads: short-lived tasks that spend a substantial fraction of time waiting on dependencies and other services. Under this paradigm, a running function can capture its current continu- ation—a lightweight snapshot of its state—as a distinct func- tion that can be paused, migrated, or copied as needed. With this ability, functions can expose finer-grained dependency information to providers, enabling more accurate resource allocation and scheduling. This paper evaluates continuation-centric computing using Arca, a new isolation primitive. Arcas are broadly similar to processes in guarantees and isolation, but provide efficient capture and resumption of serializable, portable continuations. As a result, Arcas can serve an order of magnitude more requests per second than current process-based techniques, and perform comparably to in-process isolation techniques.
+    </p>"
+  venue: "Under Review"
+  year: 2026
+  pdf:
+  authors:
+    - asrivatsan
+    - ydeng
+    - kmohr
+    - esudo
+    - singino
+    - fchua
+    - kwinstein
+
+mengthesis:
+  title: "On-Stack Replacement Across User-Kernel Boundaries"
+  abstract: "<p>
+    In large, distributed computations with small amounts of work done at each node, networking latencies quickly add up, especially in comparison to the time taken to execute small tasks. As such, lowering network latencies is crucial to getting good performance. Previous research has shown that often the largest contributors to network latencies are data copies between kernel and application buffers. Conventional wisdom argues that to solve this problem, one should move the networking stack out of the kernel and into the user space or networking hardware. Instead, we build upon an alternative approach, known as LakePlacid. LakePlacid mitigates the kernel-user boundary overhead issue by moving the most important application logic out of the user space and into the kernel. This thesis proposes and implements a key improvement to LakePlacid. Because only part of the application logic is migrated to the kernel, some packets necessarily must be resolved in the standard user space application. The system discussed in this thesis allows packets which cannot be handled in the kernel to seamlessly continue in user space via on-stack replacement, thus preventing side effects from being executed erroneously. This system for on-stack replacement is very general, allowing execution to switch between code versions at any conditional, and it is novel in its ability to switch stacks across the user-kernel boundary. With this change, LakePlacid is able to better maintain the semantics of user applications, making it more feasible in practice.
+    </p>"
+  venue: "M.Eng. Thesis"
+  year: 2024
+  pdf: https://dspace.mit.edu/bitstream/handle/1721.1/157170/mohr-kmohr-meng-eecs-2024-thesis.pdf?sequence=1&isAllowed=y
+  authors:
+    - kmohr

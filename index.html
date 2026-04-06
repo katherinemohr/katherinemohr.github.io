@@ -101,6 +101,62 @@ layout: default
     </form>
   </section> -->
   <section>
+    <div">
+      <h3>Publications</h3>
+      <ul style="list-style: none; padding-left: 0px">
+        {% for pub_keyval in site.data.publications %}
+        {% assign pub = pub_keyval[1] %}
+        <li style="margin-bottom: 0.75em">
+          <b>{{ pub.title }}</b>
+          {% if pub.pdf %}
+          <span style="font-size: 0.7em;">
+            <a href="{{ pub.pdf }}">PDF</a>
+          </span>
+          {% endif %}
+
+          <p style="margin: 0 0 0.1em 0; font-size: 0.90em;">
+            {% for author in pub.authors %}
+              {% if forloop.last == true and forloop.length > 1 %}
+                and
+              {% endif %}
+              {% if author == "kmohr" %}
+                <b>{{ site.data.authors[author].name }}</b>
+              {% else %}
+                <a href="{{ site.data.authors[author].site }}">
+                  {{ site.data.authors[author].name }}
+                </a>
+              {% endif %}
+              {% if forloop.last == false and forloop.length > 2 %},{% endif %}
+            {% endfor %}
+          </p>
+          <p style="margin: 0 0 0.1em 0; font-size: 0.9em;">
+            <i>
+              {{ pub.venue }}
+              {% if pub.venuenote %}
+                ({{ pub.venuenote }})
+              {% endif %}
+              {% if pub.volume %}
+                , Volume {{ pub.volume }}
+              {% endif %}
+              {% if pub.issue %}
+                , Issue {{ pub.issue }}
+              {% endif %}
+            </i>
+            {% if pub.month %}
+              , {{ pub.month }}
+            {% endif %}
+            {% if pub.year %}
+              {{ pub.year }}
+            {% endif %}
+            {% if pub.award %}
+              <br />
+              <span style="color:#0096FF"><b>{{ pub.award }}</b></span>
+            {% endif %}
+          </p>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
     <div style="padding-top: 20px">
       <h3>Blog</h3>
       <p style="font-size: .95em; color: #666; margin: 0 0 0.5em 0;">
