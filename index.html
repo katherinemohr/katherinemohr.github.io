@@ -55,9 +55,12 @@ layout: default
       <h3>Publications</h3>
       <ul style="list-style: none; padding-left: 0px">
         {% for pub_keyval in site.data.publications %}
+        {% assign key = pub_keyval[0] %}
         {% assign pub = pub_keyval[1] %}
         <li style="margin-bottom: 0.75em">
-          <b>{{ pub.title }}</b>
+          <a href="/pub/{{ key }}/" style="text-decoration: none; color: inherit;">
+            <b>{{ pub.title }}</b>
+          </a>
           {% if pub.pdf %}
           <span style="font-size: 0.7em;">
             <a href="{{ pub.pdf }}">PDF</a>
@@ -107,7 +110,7 @@ layout: default
         {% endfor %}
       </ul>
     </div>
-    
+
     <div style="padding-top: 20px">
       <h3>Blog</h3>
       <p style="font-size: .95em; color: #666; margin: 0 0 0.5em 0;">

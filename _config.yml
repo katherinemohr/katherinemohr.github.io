@@ -23,6 +23,9 @@ collections:
   other:
     output: true
     permalink: /:title
+  publications:
+    output: true
+    permalink: /pub/:name/
 sqlite:
   - data: posts
     file: &db "_db/clog.db"
