@@ -1,0 +1,25 @@
+/* Remove background from the full-width wrappers */
+div.highlight,
+figure.highlight,
+pre.highlight,
+div.highlight pre,
+figure.highlight pre {
+  background: transparent !important;
+}
+
+/* Put background just behind the code content */
+div.highlight pre code,
+figure.highlight pre code,
+pre.highlight code {
+  display: inline-block;
+  background: #fff; /* or your cream color */
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+}
+
+/* Keep long lines scrollable */
+div.highlight pre,
+figure.highlight pre,
+pre.highlight {
+  overflow-x: auto;
+}

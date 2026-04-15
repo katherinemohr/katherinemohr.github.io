@@ -49,57 +49,7 @@ layout: default
       You should probably go check that out instead.
     </p>
   </section>
-  <!-- <section class="main-signup"> TODO: become big enough to need this
-    <form
-      action="https://gmail.us20.list-manage.com/subscribe/post?u=d1654f70a6addb0e9ce8afd83&amp;id=bab65ed2b1"
-      method="post"
-      id="mc-embedded-subscribe-form"
-      name="mc-embedded-subscribe-form"
-      class="validate"
-      target="_blank"
-      novalidate
-    >
-      <label for="mce-EMAIL">
-        <h3 class="fw8 f5 ttu mt0 mb1">Get essays a bit faster</h3>
-      </label>
-      <p id="mce-email-describe" class="mt0">
-        I write about computer science papers on a recurring basis, mostly from
-        the fields of distributed systems, operating systems, and computer
-        security. I also publish blog updates
-        <a href="https://twitter.com/micahlerner">on Twitter</a> and via
-        <a href="/feed.xml">Atom feed</a>.
-      </p>
-
-      <div id="mc_embed_signup_scroll">
-        <div>
-          <input
-            type="email"
-            value=""
-            name="EMAIL"
-            class="email"
-            id="tlemail"
-            placeholder="email address"
-            required
-          />
-          <div style="position: absolute; left: -5000px" aria-hidden="true">
-            <input
-              type="text"
-              name="b_d1654f70a6addb0e9ce8afd83_bab65ed2b1"
-              tabindex="-1"
-              value=""
-            />
-          </div>
-          <input
-            type="submit"
-            value="Subscribe"
-            name="subscribe"
-            id="mc-embedded-subscribe"
-            class="button"
-          />
-        </div>
-      </div>
-    </form>
-  </section> -->
+  <!--TODO: this code is kinda ugly and also I want this to link to another page with the bibtex and stuff like Fred has-->
   <section>
     <div">
       <h3>Publications</h3>
@@ -157,6 +107,7 @@ layout: default
         {% endfor %}
       </ul>
     </div>
+    
     <div style="padding-top: 20px">
       <h3>Blog</h3>
       <p style="font-size: .95em; color: #666; margin: 0 0 0.5em 0;">
@@ -184,8 +135,8 @@ layout: default
         {% endunless %} {% endfor %}
       </ul>
     </div>
-    <!--<div style="padding-top: 20px">
-      <h3>Recent fragments</h3>
+    <div style="padding-top: 20px">
+      <h3>Fragments</h3>
       <ul style="list-style: none; padding-left: 0px">
         {% for post in site.fragments reversed %} {% unless post.tags contains
         'draft' %}
@@ -198,6 +149,6 @@ layout: default
         </li>
         {% endunless %} {% endfor %}
       </ul>
-    </div>-->
+    </div>
   </section>
 </article>

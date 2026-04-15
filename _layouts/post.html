@@ -11,13 +11,17 @@ layout: default
     </header>
   </section>
   <h1>{{ page.title}}</h1>
-  {% if post.tags.size > 0 %}
+  {% if page.subtitle %}
+  <h3>{{ page.subtitle }}</h3>
+  {% endif %}
+  <!--TODO: make tags actually group things together-->
+  <!--{% if page.tags.size > 0 %}
   <ul class="inline-bulleted">
-    {% for tag in post.tags %}
+    {% for tag in page.tags %}
     <li>{{ tag }}</li>
     {% endfor %}
   </ul>
-  {% endif %}
+  {% endif %}-->
   <h4>Published {{ page.date | date: '%B %d, %Y' }}</h4>
   <section id="post-content">
     {% assign thesize = page.hn | size %} {% if thesize > 0 %} {% assign hn_link = page.hn %} {% discussion params=page.hn %} {% endif %} {% if page.intro %}
@@ -34,8 +38,8 @@ layout: default
 
     <footer>
       <p>
-        By Katherine Mohr. 
-        <a href="https://twitter.com/kmohr_">Twitter</a>  
+        By Katherine Mohr.
+        <a href="https://twitter.com/kmohr_">Twitter</a>
         <a href="https://www.linkedin.com/in/katherinemohr">LinkedIn</a>
       </p>
       <!-- <form

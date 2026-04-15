@@ -2,10 +2,10 @@ author: "Katherine Mohr"
 title: "katherinemohr.github.io" # TODO: connect to cs.stanford.edu domain
 url: "https://katherinemohr.github.io"
 repository: "katherinemohr/katherinemohr.github.io"
+
 plugins:
   - jekyll-feed
   - jekyll-sitemap
-  - "jekyll-github-metadata"
   - jekyll_sqlite
 exclude:
   - _db
