@@ -141,8 +141,7 @@ layout: default
     <div style="padding-top: 20px">
       <h3>Fragments</h3>
       <ul style="list-style: none; padding-left: 0px">
-        {% for post in site.fragments reversed %} {% unless post.tags contains
-        'draft' %}
+        {% for post in site.fragments reversed %} {% unless post.draft %}
         <li>
           <p>
             <a href="{{post.url}}">{{post.title}}</a> - {{ post.date | date: '%B
