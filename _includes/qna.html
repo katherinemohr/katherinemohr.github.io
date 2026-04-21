@@ -1,0 +1,7 @@
+1. {{ include.question }}
+  <details class="qna-answer">
+    <summary>{{ include.summary | default: "Show/Hide Answer" }}</summary>
+    <div class="qna-answer-content">
+      {{ include.answer | markdownify }}
+    </div>
+  </details>

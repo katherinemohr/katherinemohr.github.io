@@ -1,0 +1,30 @@
+/* Q&A blocks */
+.qna {
+  width: 55%;
+  margin: 1rem 0 1.25rem;
+  padding: 0.75rem 1rem;
+}
+
+.qna-question > *:first-child {
+  margin-top: 0;
+}
+
+.qna-question > *:last-child {
+  margin-bottom: 0.75rem;
+}
+
+.qna-answer summary {
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+}
+
+.qna-answer-content {
+  margin-top: 0.6rem;
+}
+
+@media (max-width: 760px) {
+  .qna {
+    width: 100%;
+  }
+}
