@@ -14,7 +14,6 @@ pre.highlight code {
   display: inline-block;
   background: #fff; /* or your cream color */
   padding: 0.75rem 1rem;
-  border-radius: 6px;
 }
 
 /* Keep long lines scrollable */

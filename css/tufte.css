@@ -890,3 +890,17 @@ section > p.discussion {
 h1 .publication-name {
   display: none;
 }
+
+/* collapsible details */
+.details-summary {
+  font-style: normal;
+  font-weight: 600;
+  font-size: 1.2rem;
+  margin-top: 2rem;
+  margin-bottom: 1.4rem;
+  line-height: 1;
+}
+
+.details-body {
+  padding: 0 2rem;
+}
