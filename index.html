@@ -79,7 +79,7 @@ layout: default
                   {{ site.data.authors[author].name }}
                 </a>
               {% endif %}
-              {% if forloop.last == false and forloop.length > 2 %},{% endif %}
+            {%- if forloop.last == false and forloop.length > 2 %},{% endif %}
             {% endfor %}
           </p>
           <p style="margin: 0 0 0.1em 0; font-size: 0.9em;">

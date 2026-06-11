@@ -1,10 +1,28 @@
+arom:
+  title: "The Kernel's Write: Application Read-Only Memory"
+  abstract: "<p>
+    Awaiting approval to post.
+    </p>"
+  venue: "Under Review"
+  year: 2026
+  authors:
+    - hsshim
+    - kmohr
+    - pal
+
 arca:
   title: "Continuation-Centric Computing with Arca"
   abstract: "<p>
     This paper presents continuation-centric computing, an op- erating system design paradigm for “serverless”-style work- loads: short-lived tasks that spend a substantial fraction of time waiting on dependencies and other services. Under this paradigm, a running function can capture its current continu- ation—a lightweight snapshot of its state—as a distinct func- tion that can be paused, migrated, or copied as needed. With this ability, functions can expose finer-grained dependency information to providers, enabling more accurate resource allocation and scheduling. This paper evaluates continuation-centric computing using Arca, a new isolation primitive. Arcas are broadly similar to processes in guarantees and isolation, but provide efficient capture and resumption of serializable, portable continuations. As a result, Arcas can serve an order of magnitude more requests per second than current process-based techniques, and perform comparably to in-process isolation techniques.
     </p>"
-  venue: "Under Review"
+  venue: "Operating Systems Design and Implementation (OSDI)"
   year: 2026
+  month: "July"
+  # publisher: "USENIX Association"
+  # address: "USA"
+  # booktitle: "Proceedings of the 19th USENIX Conference on Operating Systems Design and Implementation"
+  # location: "Seattle, WA, USA"
+  # series: "OSDI '26"
   pdf:
   authors:
     - asrivatsan
