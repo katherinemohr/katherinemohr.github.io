@@ -14,6 +14,7 @@ arca:
   title: "Continuation-Centric Computing with Arca"
   abstract: "<p>
     This paper presents continuation-centric computing, an operating system design paradigm for “serverless”-style workloads: short-lived tasks that spend a substantial fraction of time waiting on dependencies and other services. Under this paradigm, a running function can capture its current continuation—a lightweight snapshot of its state—as a distinct function that can be paused, migrated, or copied as needed.
+    <br/><br/>
     This paper evaluates the continuation-centric computing model using Arca, an operating system providing continuation capture as a core service. Arca supports a process abstraction that is broadly similar to Unix processes in guarantees and isolation, but additionally provides efficient capture and resumption of serializable, portable continuations.
     </p>"
   venue: "Operating Systems Design and Implementation (OSDI)"
