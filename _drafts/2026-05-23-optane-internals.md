@@ -21,17 +21,31 @@ and I have necessarily become fairly well versed in the design of Optane over th
 
 So, without further ado,
 
-## What was optane?
+## What is Optane?
+
+In the most technical jargony terms, Optane is a phase-change memory technology, 3D X-Point, packaged as either an 
+M.2 SSD or as a DIMM.
+
+Let's unpack some of the jargon here. 
+**Phase-change memory** is a kind of non-volatile memory that physically changes the bit material between a crystalline and amorphous structure to represent 0s and 1s.
+Both **M.2** (**M**odule, **2**nd gen?) and **DIMM** (**D**ual **I**n-line **M**emory **M**odule) really just refer to the physical packaging of the hardware. M.2 SSDs are 22mm across, and DIMMs are what you think of when you think of a "stick of ram".
+
+In more hand-wavey terms, Optane was Intel's attempt at building a new storage class that could fit somewhere in between traditional DRAM and SSDs.
+
+### What do 
 
 
 {% maincolumn 'assets/skeleton/solver_comparison.png' '' %}
 
 ## Why wasn't it successful commercially?
 
-TODO
+
 
 ## How did Optane (DIMMs) work?
 
 One paragraph tld;r.
 
 Fin.
+
+## References
+https://www.sysdevlabs.com/articles/storage-technologies/what-is-intel-optane/
