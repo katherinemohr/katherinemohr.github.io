@@ -68,19 +68,17 @@ layout: default
           {% endif %}
 
           <p style="margin: 0 0 0.1em 0; font-size: 0.90em;">
-            {% for author in pub.authors %}
-              {% if forloop.last == true and forloop.length > 1 %}
+            {%- for author in pub.authors -%}
+              {%- if forloop.last == true and forloop.length > 1 -%}
                 and
-              {% endif %}
-              {% if author == "kmohr" %}
+              {% endif -%}
+              {%- if author == "kmohr" -%}
                 <b>{{ site.data.authors[author].name }}</b>
-              {% else %}
-                <a href="{{ site.data.authors[author].site }}">
-                  {{ site.data.authors[author].name }}
-                </a>
-              {% endif %}
-            {%- if forloop.last == false and forloop.length > 2 %},{% endif %}
-            {% endfor %}
+              {%- else -%}
+                <a href="{{ site.data.authors[author].site }}">{{ site.data.authors[author].name }}</a>
+              {%- endif -%}
+              {%- if forloop.last == false and forloop.length > 2 -%}, {% endif %}
+            {%- endfor -%}
           </p>
           <p style="margin: 0 0 0.1em 0; font-size: 0.9em;">
             <i>
