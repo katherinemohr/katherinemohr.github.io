@@ -128,7 +128,7 @@ h4 {
 hr {
   display: block;
   height: 1px;
-  width: 55%;
+  width: 65%;
   border: 0;
   border-top: 1px solid #ccc;
   margin: 1em 0;
@@ -205,12 +205,12 @@ blockquote {
 }
 
 blockquote p {
-  width: 55%;
+  width: 65%;
   margin-right: 40px;
 }
 
 blockquote footer {
-  width: 55%;
+  width: 65%;
   font-size: 1.1rem;
   text-align: right;
 }
@@ -218,14 +218,14 @@ blockquote footer {
 section > p,
 section > footer,
 section > table {
-  width: 55%;
+  width: 65%;
 }
 
-/* 50 + 5 == 55, to be the same width as paragraph */
+/* 60 + 5 == 65, to be the same width as paragraph */
 section > dl,
 section > ol,
 section > ul {
-  width: 50%;
+  width: 60%;
   -webkit-padding-start: 5%;
 }
 
@@ -240,7 +240,7 @@ figure {
   font-size: 100%;
   font: inherit;
   vertical-align: baseline;
-  max-width: 55%;
+  max-width: 65%;
   -webkit-margin-start: 0;
   -webkit-margin-end: 0;
   margin: 0 0 3em 0;
@@ -352,8 +352,8 @@ img {
 .marginnote {
   float: right;
   clear: right;
-  margin-right: -60%;
-  width: 50%;
+  margin-right: -45%;
+  width: 40%;
   margin-top: 0.3rem;
   margin-bottom: 0;
   font-size: 1.1rem;
@@ -388,8 +388,8 @@ img {
 
 blockquote .sidenote,
 blockquote .marginnote {
-  margin-right: -82%;
-  min-width: 59%;
+  margin-right: -54%;
+  min-width: 50%;
   text-align: left;
 }
 
@@ -479,6 +479,20 @@ label.margin-toggle:not(.sidenote-number) {
   height: 100%;
 }
 
+.profile-header {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 1em;
+  width: 65%;
+}
+
+.profile-header img {
+  max-width: 13em;
+  flex-shrink: 0;
+}
+
 @media (max-width: 760px) {
   body {
     width: 84%;
@@ -564,6 +578,17 @@ label.margin-toggle:not(.sidenote-number) {
   section.signup {
     width: 100%;
   }
+
+  .profile-header {
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  .profile-header img {
+    max-width: 10em;
+    width: auto;
+  }
 }
 
 /* CUSTOM CSS */
@@ -613,7 +638,7 @@ section > p.discussion {
 }
 
 .main-signup {
-  width: 55%;
+  width: 65%;
   border: #ccc;
   border-top-width: 1px;
   border-top-style: solid;
