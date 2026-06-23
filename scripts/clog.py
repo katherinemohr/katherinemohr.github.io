@@ -258,6 +258,21 @@ def git_commit_and_push(db_path):
         # Change to repo directory
         os.chdir(repo_dir)
 
+        # Switch to main branch if not already on it
+        current_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        switched_branch = current_branch != "main"
+        if switched_branch:
+            subprocess.run(
+                ["git", "stash", "push", "-m", "switching to main to add to clog"],
+                check=True,
+            )
+            subprocess.run(["git", "checkout", "main"], check=True)
+
         # Add the database file
         subprocess.run(["git", "add", "_db/clog.db"], check=True)
 
@@ -269,6 +284,11 @@ def git_commit_and_push(db_path):
         subprocess.run(["git", "push"], check=True)
 
         print("Successfully committed and pushed changes to git.")
+
+        # Restore original branch and stashed changes
+        if switched_branch:
+            subprocess.run(["git", "checkout", current_branch], check=True)
+            subprocess.run(["git", "stash", "pop"], check=True)
 
     except subprocess.CalledProcessError as e:
         print(f"Git operation failed: {e}")
