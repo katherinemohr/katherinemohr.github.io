@@ -271,7 +271,7 @@ def git_commit_and_push(db_path):
                 ["git", "stash", "push", "-m", "switching to main to add to clog"],
                 check=True,
             )
-            subprocess.run(["git", "checkout", "main"], check=True)
+            subprocess.run(["git", "switch", "main"], check=True)
 
         # Add the database file
         subprocess.run(["git", "add", "_db/clog.db"], check=True)
@@ -287,7 +287,7 @@ def git_commit_and_push(db_path):
 
         # Restore original branch and stashed changes
         if switched_branch:
-            subprocess.run(["git", "checkout", current_branch], check=True)
+            subprocess.run(["git", "switch", current_branch], check=True)
             subprocess.run(["git", "stash", "pop"], check=True)
 
     except subprocess.CalledProcessError as e:
