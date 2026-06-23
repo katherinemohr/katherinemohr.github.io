@@ -1,0 +1,471 @@
+---
+layout: default
+title: "focus - Katherine Mohr"
+---
+
+<style>
+  .focus-timer-section {
+    text-align: center;
+    padding: 2rem 0 1rem;
+  }
+
+  .stopwatch {
+    font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: 5rem;
+    letter-spacing: 0.05em;
+    color: #111;
+    transition: color 0.3s;
+    line-height: 1;
+    margin: 0;
+  }
+
+  .stopwatch.idle {
+    color: #bbb;
+  }
+
+  .break-label {
+    font-size: 1rem;
+    color: #888;
+    margin: 0.5rem 0 0.25rem;
+    font-style: italic;
+    min-height: 1.4em;
+  }
+
+  .break-timer {
+    font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: 2.5rem;
+    letter-spacing: 0.04em;
+    color: #5a8fa0;
+    line-height: 1;
+    margin: 0 0 1.25rem;
+    min-height: 1em;
+  }
+
+  .break-timer.hidden {
+    visibility: hidden;
+  }
+
+  .break-label.hidden {
+    visibility: hidden;
+  }
+
+  .focus-btn {
+    font-family: et-book, Palatino, "Palatino Linotype", "Palatino LT STD", "Book Antiqua", Georgia, serif;
+    font-size: 1.2rem;
+    padding: 0.4em 1.4em;
+    border: 1px solid #111;
+    background: transparent;
+    cursor: pointer;
+    color: #111;
+    transition: background 0.15s, color 0.15s;
+    margin: 0 0.4em;
+  }
+
+  .focus-btn:hover {
+    background: #111;
+    color: #fffff8;
+  }
+
+  .focus-btn.secondary {
+    border-color: #aaa;
+    color: #888;
+  }
+
+  .focus-btn.secondary:hover {
+    background: #aaa;
+    color: #fffff8;
+  }
+
+  .break-complete-msg {
+    font-size: 1.1rem;
+    color: #5a8fa0;
+    font-style: italic;
+    margin-bottom: 1rem;
+    min-height: 1.4em;
+  }
+
+  /* Stats */
+  .focus-stats dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.2em 1.5em;
+    margin: 0;
+  }
+
+  .focus-stats dt {
+    font-style: italic;
+    color: #555;
+  }
+
+  .focus-stats dd {
+    margin: 0;
+    font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: 0.95rem;
+  }
+
+  /* Todos */
+  .todo-input-row {
+    display: flex;
+    gap: 0.5em;
+    margin-bottom: 1rem;
+    width: 100%;
+  }
+
+  .todo-input-row input[type="text"] {
+    flex: 1;
+    font-family: et-book, Palatino, "Palatino Linotype", "Palatino LT STD", "Book Antiqua", Georgia, serif;
+    font-size: 1rem;
+    padding: 0.3em 0.5em;
+    border: 1px solid #ccc;
+    background: #fffff8;
+    color: #111;
+  }
+
+  .todo-input-row input[type="text"]:focus {
+    outline: none;
+    border-color: #888;
+  }
+
+  .todo-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+  }
+
+  .todo-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+    padding: 0.25em 0;
+    border-bottom: 1px solid #eee;
+  }
+
+  .todo-item:last-child {
+    border-bottom: none;
+  }
+
+  .todo-item input[type="checkbox"] {
+    margin: 0;
+    flex-shrink: 0;
+    cursor: pointer;
+    accent-color: #5a8fa0;
+    width: 1em;
+    height: 1em;
+  }
+
+  .todo-item label {
+    flex: 1;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1.4;
+  }
+
+  .todo-item.done label {
+    text-decoration: line-through;
+    color: #aaa;
+  }
+
+  .todo-delete {
+    background: none;
+    border: none;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0 0.2em;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .todo-delete:hover {
+    color: #888;
+  }
+
+  @media (max-width: 760px) {
+    .stopwatch {
+      font-size: 3.2rem;
+    }
+    .break-timer {
+      font-size: 2rem;
+    }
+  }
+</style>
+
+<article>
+  <section>
+    <header>
+      <a href="/"><h3>katherinemohr.github.io</h3></a>
+    </header>
+  </section>
+
+  <h1 style="text-align: center; margin-bottom: 0;">focus</h1>
+
+  <section class="focus-timer-section">
+    <p id="stopwatch" class="stopwatch idle">00:00:00</p>
+
+    <p id="break-label" class="break-label hidden">break</p>
+    <p id="break-timer" class="break-timer hidden">00:00</p>
+
+    <p id="break-complete-msg" class="break-complete-msg" style="visibility: hidden;">break over &mdash; nice work</p>
+
+    <div id="btn-row">
+      <button id="main-btn" class="focus-btn" onclick="handleMainBtn()">start</button>
+      <button id="skip-btn" class="focus-btn secondary" onclick="handleSkip()" style="display: none;">skip break</button>
+    </div>
+  </section>
+
+  <h2 style="margin-bottom: 0.5rem;">today</h2>
+  <section class="focus-stats">
+    <dl>
+      <dt>sessions</dt><dd id="stat-sessions">0</dd>
+      <dt>total work</dt><dd id="stat-total">0:00:00</dd>
+      <dt>longest</dt><dd id="stat-longest">0:00:00</dd>
+      <dt>average</dt><dd id="stat-avg">0:00:00</dd>
+    </dl>
+  </section>
+
+  <h2 style="margin-bottom: 0.5rem;">next up</h2>
+  <section>
+    <div class="todo-input-row">
+      <input type="text" id="todo-input" placeholder="add a task..." />
+      <button class="focus-btn" onclick="addTodo()">add</button>
+    </div>
+    <ul id="todo-list" class="todo-list"></ul>
+  </section>
+</article>
+
+<script>
+(function () {
+  const STORAGE_KEYS = {
+    sessions: 'focus_sessions',
+    date: 'focus_date',
+    todos: 'focus_todos',
+  };
+
+  // ── State ──────────────────────────────────────────────────────────────
+  let state = 'IDLE'; // IDLE | WORKING | ON_BREAK
+  let workStart = null;
+  let workElapsed = 0; // ms accumulated this session
+  let breakRemaining = 0; // ms
+  let tickInterval = null;
+
+  let sessionLog = [];
+  let todos = [];
+
+  // ── Persistence ────────────────────────────────────────────────────────
+  function todayStr() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function loadStorage() {
+    const stored = localStorage.getItem(STORAGE_KEYS.date);
+    if (stored !== todayStr()) {
+      // new day — reset sessions, keep todos
+      localStorage.removeItem(STORAGE_KEYS.sessions);
+      localStorage.setItem(STORAGE_KEYS.date, todayStr());
+    }
+    const raw = localStorage.getItem(STORAGE_KEYS.sessions);
+    sessionLog = raw ? JSON.parse(raw) : [];
+
+    const rawTodos = localStorage.getItem(STORAGE_KEYS.todos);
+    todos = rawTodos ? JSON.parse(rawTodos) : [];
+  }
+
+  function saveSessions() {
+    localStorage.setItem(STORAGE_KEYS.sessions, JSON.stringify(sessionLog));
+  }
+
+  function saveTodos() {
+    localStorage.setItem(STORAGE_KEYS.todos, JSON.stringify(todos));
+  }
+
+  // ── Formatting ─────────────────────────────────────────────────────────
+  function pad(n, len) {
+    return String(Math.floor(n)).padStart(len, '0');
+  }
+
+  function fmtHMS(ms) {
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return `${pad(h, 1)}:${pad(m, 2)}:${pad(sec, 2)}`;
+  }
+
+  function fmtMSS(ms) {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${pad(m, 2)}:${pad(sec, 2)}`;
+  }
+
+  // ── DOM refs ───────────────────────────────────────────────────────────
+  const elStopwatch = document.getElementById('stopwatch');
+  const elBreakLabel = document.getElementById('break-label');
+  const elBreakTimer = document.getElementById('break-timer');
+  const elBreakMsg = document.getElementById('break-complete-msg');
+  const elMainBtn = document.getElementById('main-btn');
+  const elSkipBtn = document.getElementById('skip-btn');
+
+  // ── Tick ───────────────────────────────────────────────────────────────
+  function tick() {
+    if (state === 'WORKING') {
+      const now = Date.now();
+      workElapsed = (now - workStart);
+      elStopwatch.textContent = fmtHMS(workElapsed);
+    } else if (state === 'ON_BREAK') {
+      breakRemaining -= 100;
+      if (breakRemaining <= 0) {
+        breakRemaining = 0;
+        endBreak();
+        return;
+      }
+      elBreakTimer.textContent = fmtMSS(breakRemaining);
+    }
+  }
+
+  // ── State transitions ──────────────────────────────────────────────────
+  function startWork() {
+    state = 'WORKING';
+    workStart = Date.now() - workElapsed;
+    tickInterval = setInterval(tick, 100);
+    elStopwatch.classList.remove('idle');
+    elMainBtn.textContent = 'pause';
+    elSkipBtn.style.display = 'none';
+    elBreakLabel.classList.add('hidden');
+    elBreakTimer.classList.add('hidden');
+    elBreakMsg.style.visibility = 'hidden';
+  }
+
+  function pauseWork() {
+    state = 'ON_BREAK';
+    clearInterval(tickInterval);
+    const duration = workElapsed;
+    breakRemaining = Math.max(Math.round(duration / 5), 1000); // min 1s
+
+    elBreakLabel.classList.remove('hidden');
+    elBreakTimer.classList.remove('hidden');
+    elBreakTimer.textContent = fmtMSS(breakRemaining);
+    elMainBtn.style.display = 'none';
+    elSkipBtn.style.display = 'inline-block';
+    elBreakMsg.style.visibility = 'hidden';
+
+    tickInterval = setInterval(tick, 100);
+  }
+
+  function endBreak() {
+    clearInterval(tickInterval);
+    // log the session
+    sessionLog.push({ duration: workElapsed });
+    saveSessions();
+    updateStats();
+
+    state = 'IDLE';
+    workElapsed = 0;
+    breakRemaining = 0;
+    elStopwatch.textContent = '0:00:00';
+    elStopwatch.classList.add('idle');
+    elBreakLabel.classList.add('hidden');
+    elBreakTimer.classList.add('hidden');
+    elBreakMsg.style.visibility = 'visible';
+    elMainBtn.textContent = 'start';
+    elMainBtn.style.display = 'inline-block';
+    elSkipBtn.style.display = 'none';
+  }
+
+  function handleMainBtn() {
+    if (state === 'IDLE') {
+      startWork();
+    } else if (state === 'WORKING') {
+      pauseWork();
+    }
+  }
+
+  function handleSkip() {
+    endBreak();
+  }
+
+  window.handleMainBtn = handleMainBtn;
+  window.handleSkip = handleSkip;
+
+  // ── Stats ──────────────────────────────────────────────────────────────
+  function updateStats() {
+    const n = sessionLog.length;
+    document.getElementById('stat-sessions').textContent = n;
+    if (n === 0) {
+      document.getElementById('stat-total').textContent = '0:00:00';
+      document.getElementById('stat-longest').textContent = '0:00:00';
+      document.getElementById('stat-avg').textContent = '0:00:00';
+      return;
+    }
+    const durations = sessionLog.map(s => s.duration);
+    const total = durations.reduce((a, b) => a + b, 0);
+    const longest = Math.max(...durations);
+    const avg = total / n;
+    document.getElementById('stat-total').textContent = fmtHMS(total);
+    document.getElementById('stat-longest').textContent = fmtHMS(longest);
+    document.getElementById('stat-avg').textContent = fmtHMS(avg);
+  }
+
+  // ── Todos ──────────────────────────────────────────────────────────────
+  function renderTodos() {
+    const list = document.getElementById('todo-list');
+    list.innerHTML = '';
+    todos.forEach(function (todo) {
+      const li = document.createElement('li');
+      li.className = 'todo-item' + (todo.done ? ' done' : '');
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = todo.done;
+      cb.id = 'todo-' + todo.id;
+      cb.addEventListener('change', function () {
+        todo.done = cb.checked;
+        li.className = 'todo-item' + (todo.done ? ' done' : '');
+        saveTodos();
+      });
+
+      const lbl = document.createElement('label');
+      lbl.htmlFor = 'todo-' + todo.id;
+      lbl.textContent = todo.text;
+
+      const del = document.createElement('button');
+      del.className = 'todo-delete';
+      del.textContent = '×';
+      del.setAttribute('aria-label', 'delete');
+      del.addEventListener('click', function () {
+        todos = todos.filter(function (t) { return t.id !== todo.id; });
+        saveTodos();
+        renderTodos();
+      });
+
+      li.appendChild(cb);
+      li.appendChild(lbl);
+      li.appendChild(del);
+      list.appendChild(li);
+    });
+  }
+
+  function addTodo() {
+    const input = document.getElementById('todo-input');
+    const text = input.value.trim();
+    if (!text) return;
+    todos.push({ id: Date.now(), text: text, done: false });
+    saveTodos();
+    renderTodos();
+    input.value = '';
+    input.focus();
+  }
+
+  window.addTodo = addTodo;
+
+  document.getElementById('todo-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') addTodo();
+  });
+
+  // ── Init ───────────────────────────────────────────────────────────────
+  loadStorage();
+  updateStats();
+  renderTodos();
+})();
+</script>
