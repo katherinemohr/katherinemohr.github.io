@@ -1,0 +1,1344 @@
+---
+title: "The Kernel's Write — AROM, a Friendly Field Guide"
+render_with_liquid: false
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Kernel's Write — AROM, a Friendly Field Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Mulish:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ============ DESIGN TOKENS ============ */
+:root{
+  --paper:#FBF6EC;
+  --paper-2:#F3EADA;
+  --card:#FFFDF8;
+  --ink:#332C24;
+  --ink-soft:#6E6456;
+  --ink-faint:#9A8E7C;
+  --line:#E7DBC6;
+  --line-strong:#D8C8AC;
+
+  --honey:#E8A33D;
+  --honey-deep:#C27D14;
+  --honey-soft:#FBEACB;
+
+  --dram:#2C8C7C;        /* DRAM = fast, familiar */
+  --dram-soft:#DCEFE9;
+  --ltram:#5A61B4;       /* LtRAM = the new cheap memory */
+  --ltram-soft:#E6E6F6;
+  --optane:#C0563B;      /* Optane = cautionary tale */
+  --optane-soft:#F7E1D8;
+
+  --shadow-sm:0 1px 2px rgba(80,60,30,.06), 0 2px 8px rgba(80,60,30,.05);
+  --shadow-md:0 4px 14px rgba(90,66,28,.10), 0 12px 30px rgba(90,66,28,.07);
+  --shadow-lg:0 10px 40px rgba(90,66,28,.14);
+  --radius:18px;
+  --radius-sm:12px;
+  --maxw:1080px;
+  --display:"Fraunces",Georgia,serif;
+  --body:"Mulish",-apple-system,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+
+/* ============ BASE ============ */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  font-family:var(--body);
+  color:var(--ink);
+  line-height:1.65;
+  background:var(--paper);
+  background-image:
+    radial-gradient(circle at 12% 8%, rgba(232,163,61,.05), transparent 40%),
+    radial-gradient(circle at 88% 22%, rgba(90,97,180,.05), transparent 42%),
+    radial-gradient(circle at 50% 120%, rgba(44,140,124,.06), transparent 55%);
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-family:var(--display);font-weight:600;line-height:1.18;color:var(--ink);margin:0 0 .5em}
+p{margin:0 0 1em}
+a{color:var(--honey-deep);text-decoration:none;border-bottom:1.5px solid var(--honey-soft);transition:border-color .2s}
+a:hover{border-color:var(--honey)}
+strong{font-weight:700;color:#231d16}
+em{color:var(--ink-soft)}
+
+/* ============ LAYOUT ============ */
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 22px}
+.section-pad{padding:38px 0 10px}
+
+/* ============ HERO ============ */
+.hero{
+  position:relative;overflow:hidden;
+  padding:64px 0 52px;
+  background:
+    linear-gradient(180deg, #FFFBF2 0%, var(--paper) 100%);
+  border-bottom:1px solid var(--line);
+}
+.hero::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:repeating-linear-gradient(0deg, transparent, transparent 31px, rgba(90,97,180,.05) 31px, rgba(90,97,180,.05) 32px);
+  -webkit-mask-image:linear-gradient(180deg,transparent,#000 30%,#000 60%,transparent);
+          mask-image:linear-gradient(180deg,transparent,#000 30%,#000 60%,transparent);
+}
+.hero .wrap{position:relative}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:9px;
+  font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--honey-deep);background:var(--honey-soft);
+  padding:7px 14px;border-radius:999px;border:1px solid #F0DCB0;margin-bottom:22px;
+}
+.eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--honey);box-shadow:0 0 0 4px rgba(232,163,61,.2)}
+.hero h1{
+  font-size:clamp(2.3rem,6vw,4.1rem);font-weight:600;letter-spacing:-.015em;
+  max-width:16ch;margin-bottom:.3em;
+}
+.hero h1 .swash{font-style:italic;color:var(--honey-deep);font-weight:500}
+.hero .lede{font-size:clamp(1.05rem,2.2vw,1.32rem);color:var(--ink-soft);max-width:42ch;margin-bottom:30px}
+.hero-meta{display:flex;flex-wrap:wrap;gap:10px;font-family:var(--mono);font-size:12.5px;color:var(--ink-soft)}
+.hero-meta span{background:var(--card);border:1px solid var(--line);padding:6px 12px;border-radius:999px}
+
+/* the one-rule plaque (signature) */
+.rule-plaque{
+  margin-top:34px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;
+  background:var(--card);border:1.5px solid var(--line-strong);border-radius:var(--radius);
+  padding:22px 26px;box-shadow:var(--shadow-md);max-width:680px;position:relative;
+}
+.rule-plaque::after{
+  content:"THE ONE RULE";position:absolute;top:-11px;left:24px;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;color:#fff;background:var(--ltram);
+  padding:3px 10px;border-radius:6px;
+}
+.rule-plaque .glyph{font-size:2.6rem}
+.rule-plaque p{margin:0;font-family:var(--display);font-size:1.18rem;line-height:1.4}
+.rule-plaque .ro{color:var(--dram);font-weight:600}
+.rule-plaque .wo{color:var(--ltram);font-weight:600}
+
+/* ============ TAB NAV ============ */
+.tabbar-outer{position:sticky;top:0;z-index:50;background:rgba(251,246,236,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.tabbar{display:flex;gap:6px;overflow-x:auto;padding:11px 22px;max-width:var(--maxw);margin:0 auto;scrollbar-width:none}
+.tabbar::-webkit-scrollbar{display:none}
+.tab-btn{
+  flex:0 0 auto;font-family:var(--body);font-weight:700;font-size:14px;color:var(--ink-soft);
+  background:transparent;border:1.5px solid transparent;border-radius:999px;padding:8px 16px;cursor:pointer;
+  white-space:nowrap;transition:all .18s;display:flex;align-items:center;gap:7px;
+}
+.tab-btn .n{font-family:var(--mono);font-size:11px;opacity:.6}
+.tab-btn:hover{color:var(--ink);background:var(--paper-2)}
+.tab-btn.active{color:#fff;background:var(--ink);border-color:var(--ink)}
+.tab-btn.active .n{opacity:.7;color:var(--honey)}
+
+/* ============ PANELS ============ */
+.tab-panel{display:none;animation:fade .4s ease}
+.tab-panel.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+.panel-head{padding:46px 0 8px}
+.panel-head .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--honey-deep);margin-bottom:12px}
+.panel-head h2{font-size:clamp(1.9rem,4vw,2.8rem);letter-spacing:-.01em;margin-bottom:.25em}
+.panel-head .sub{font-size:1.1rem;color:var(--ink-soft);max-width:60ch}
+
+/* ============ GENERIC CARDS / PROSE ============ */
+.prose{max-width:72ch}
+.prose p{font-size:1.03rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px 28px;box-shadow:var(--shadow-sm);margin:18px 0}
+.card h3{font-size:1.3rem;margin-bottom:.4em}
+
+/* numbered section markers used where content is a real sequence */
+.seq{counter-reset:seq;list-style:none;padding:0;margin:18px 0}
+.seq li{position:relative;padding:0 0 18px 52px;margin:0}
+.seq li::before{
+  counter-increment:seq;content:counter(seq,decimal-leading-zero);
+  position:absolute;left:0;top:-2px;font-family:var(--mono);font-size:13px;font-weight:700;color:var(--honey-deep);
+  background:var(--honey-soft);border:1px solid #EFD9AC;border-radius:8px;width:34px;height:30px;display:flex;align-items:center;justify-content:center;
+}
+
+/* ============ PRIMER ACCORDION ============ */
+.primer-grid{display:grid;grid-template-columns:1fr;gap:12px;margin:26px 0}
+.primer{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;
+  transition:box-shadow .2s,border-color .2s;
+}
+.primer[open]{box-shadow:var(--shadow-md);border-color:var(--line-strong)}
+.primer summary{
+  list-style:none;cursor:pointer;padding:16px 20px;display:flex;align-items:center;gap:14px;font-weight:700;font-size:1.04rem;
+}
+.primer summary::-webkit-details-marker{display:none}
+.primer summary .pnum{
+  flex:0 0 auto;width:30px;height:30px;border-radius:9px;background:var(--ltram-soft);color:var(--ltram);
+  font-family:var(--mono);font-size:13px;display:flex;align-items:center;justify-content:center;font-weight:700;
+}
+.primer summary .chev{margin-left:auto;color:var(--ink-faint);transition:transform .25s;flex:0 0 auto}
+.primer[open] summary .chev{transform:rotate(180deg)}
+.primer .body{padding:2px 20px 20px 64px;color:var(--ink-soft);font-size:1rem}
+.primer .body p:last-child{margin-bottom:0}
+.primer .ready{
+  margin-top:14px;padding:12px 16px;background:var(--dram-soft);border-left:3px solid var(--dram);border-radius:0 10px 10px 0;
+  color:#1f5b51;font-size:.96rem;
+}
+.primer .ready b{color:#16463e}
+
+/* ============ ANALOGY CARDS ============ */
+.analogy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px;margin:24px 0}
+.analogy{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:24px;position:relative;
+  box-shadow:var(--shadow-sm);transition:transform .2s,box-shadow .2s;overflow:hidden;
+}
+.analogy:hover{transform:translateY(-4px);box-shadow:var(--shadow-md)}
+.analogy .ill{width:100%;height:120px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;
+  background:var(--paper-2);border-radius:12px;border:1px dashed var(--line-strong)}
+.analogy .ill svg{width:120px;height:96px}
+.analogy h3{font-size:1.22rem;margin-bottom:.3em}
+.analogy .term{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--honey-deep);display:block;margin-bottom:8px}
+.analogy p{font-size:.98rem;color:var(--ink-soft);margin-bottom:.8em}
+.analogy .breaks{font-size:.9rem;color:var(--ink-faint);border-top:1px dashed var(--line-strong);padding-top:10px;margin-top:4px}
+.analogy .breaks b{color:var(--optane)}
+
+/* color-coded chips */
+.mem-chip{display:inline-block;font-family:var(--mono);font-size:.82em;font-weight:700;padding:1px 8px;border-radius:6px;vertical-align:baseline}
+.chip-dram{background:var(--dram-soft);color:#1f5b51}
+.chip-ltram{background:var(--ltram-soft);color:#3a409a}
+.chip-optane{background:var(--optane-soft);color:#9a3a22}
+
+/* ============ CALLOUTS ============ */
+.callout{border-radius:var(--radius-sm);padding:16px 20px;margin:18px 0;font-size:1rem;display:flex;gap:14px;align-items:flex-start}
+.callout .ic{flex:0 0 auto;font-size:1.3rem;line-height:1.2}
+.callout.takeaway{background:var(--honey-soft);border:1px solid #EFD9AC;color:#6e4a09}
+.callout.why{background:var(--dram-soft);border:1px solid #B9E0D6;color:#1f5b51}
+.callout.note{background:var(--paper-2);border:1px solid var(--line-strong);color:var(--ink-soft)}
+.callout b{color:inherit}
+
+/* ============ FIGURE WRAPPER ============ */
+figure.viz{margin:30px 0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow-md)}
+figure.viz figcaption{margin-top:18px;font-size:.94rem;color:var(--ink-soft);border-top:1px dashed var(--line-strong);padding-top:14px}
+.viz-title{font-family:var(--display);font-size:1.25rem;font-weight:600;margin-bottom:4px}
+.viz-kicker{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:18px}
+
+/* legend */
+.legend{display:flex;flex-wrap:wrap;gap:16px;margin:14px 0 22px;font-size:.9rem;font-weight:600}
+.legend span{display:inline-flex;align-items:center;gap:7px;color:var(--ink-soft)}
+.legend i{width:14px;height:14px;border-radius:4px;display:inline-block}
+
+/* ============ MEMORY STACK VIZ ============ */
+.stack{display:flex;flex-direction:column;gap:0}
+.tier{position:relative;border-radius:14px;padding:18px 20px;margin:7px 0;border:1.5px solid;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+.tier .tname{font-family:var(--display);font-size:1.18rem;font-weight:600}
+.tier .trole{font-size:.9rem;color:var(--ink-soft);margin-top:2px}
+.tier .tstats{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.stat{font-family:var(--mono);font-size:11px;padding:4px 8px;border-radius:7px;background:#fff;border:1px solid var(--line);white-space:nowrap}
+.tier.sram{background:#fff;border-color:var(--line-strong)}
+.tier.dram{background:var(--dram-soft);border-color:#9fd2c7}
+.tier.ltram{background:var(--ltram-soft);border-color:#bcbfe8}
+.tier.ssd{background:var(--paper-2);border-color:var(--line-strong)}
+.stack-divider{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-faint);text-align:center;padding:8px 0;position:relative}
+.stack-divider span{background:var(--card);padding:0 12px;position:relative;z-index:1}
+.stack-divider::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:1px dashed var(--line-strong)}
+.stack-axes{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em}
+
+/* ============ BAR CHART (latency) ============ */
+.bars{margin:8px 0}
+.bar-row{display:grid;grid-template-columns:96px 1fr;gap:14px;align-items:center;margin:14px 0}
+.bar-label{text-align:right;font-weight:700;font-size:.92rem}
+.bar-label small{display:block;font-family:var(--mono);font-weight:500;font-size:10.5px;color:var(--ink-faint)}
+.bar-track{position:relative;height:38px;background:var(--paper-2);border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.bar-fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:10px;transition:width 1.2s cubic-bezier(.16,1,.3,1);display:flex;align-items:center;justify-content:flex-end;padding-right:10px}
+.bar-fill span{font-family:var(--mono);font-size:12px;font-weight:700;color:#fff;white-space:nowrap;opacity:0;transition:opacity .4s .6s}
+.bars.shown .bar-fill span{opacity:1}
+.bf-dram{background:linear-gradient(90deg,#3aa392,#2C8C7C)}
+.bf-stt{background:linear-gradient(90deg,#6f76c9,#5A61B4)}
+.bf-rram{background:linear-gradient(90deg,#7a80c2,#6166a8)}
+.bf-fefet{background:linear-gradient(90deg,#9094c4,#7b80b4)}
+.bf-optane{background:linear-gradient(90deg,#cf6f56,#C0563B)}
+.bf-nor{background:repeating-linear-gradient(45deg,#b0a08c,#b0a08c 8px,#a08d76 8px,#a08d76 16px)}
+.bar-ref{position:absolute;top:0;bottom:0;border-left:2px dashed;display:flex;align-items:flex-start}
+.bar-ref small{font-family:var(--mono);font-size:9.5px;padding:2px 4px;transform:translateX(4px)}
+
+/* comparison table */
+.tbl{width:100%;border-collapse:collapse;margin:18px 0;font-size:.92rem}
+.tbl th,.tbl td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line)}
+.tbl th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);font-weight:700}
+.tbl td:not(:first-child){font-family:var(--mono);font-size:.86rem}
+.tbl tr:hover td{background:var(--paper-2)}
+.tbl .best td{background:var(--ltram-soft)}
+.tbl .best:hover td{background:#dcdef3}
+
+/* ============ FLOW DIAGRAM (concept map / paths) ============ */
+.flow{display:flex;flex-direction:column;gap:16px}
+.flow-row{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;justify-content:center}
+.node{background:#fff;border:1.5px solid var(--line-strong);border-radius:14px;padding:14px 16px;min-width:150px;max-width:230px;box-shadow:var(--shadow-sm);position:relative}
+.node .nt{font-weight:700;font-size:.98rem;margin-bottom:4px}
+.node .nd{font-size:.85rem;color:var(--ink-soft);line-height:1.45}
+.node.n-dram{border-color:#9fd2c7;background:var(--dram-soft)}
+.node.n-ltram{border-color:#bcbfe8;background:var(--ltram-soft)}
+.node.n-optane{border-color:#e3b4a5;background:var(--optane-soft)}
+.node.n-rule{border-color:var(--honey);background:var(--honey-soft)}
+.flow-arrow{align-self:center;color:var(--ink-faint);font-size:1.4rem;display:flex;align-items:center;font-family:var(--mono)}
+.flow-edge-label{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em;align-self:center}
+
+/* ============ AROM PATH PANELS ============ */
+.paths{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:8px}
+.path{border-radius:var(--radius-sm);padding:20px;border:1.5px solid}
+.path.read{background:var(--dram-soft);border-color:#9fd2c7}
+.path.write{background:var(--optane-soft);border-color:#e3b4a5}
+.path h4{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.path.read h4{color:#1f5b51}
+.path.write h4{color:#9a3a22}
+.path-stage{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 13px;margin:8px 0;font-size:.92rem;display:flex;gap:10px;align-items:flex-start}
+.path-stage .sn{font-family:var(--mono);font-weight:700;font-size:11px;flex:0 0 auto;width:20px;height:20px;border-radius:6px;background:var(--paper-2);display:flex;align-items:center;justify-content:center;margin-top:1px}
+.path .verdict{margin-top:12px;font-size:.9rem;font-style:italic;color:var(--ink-soft)}
+
+/* ============ TOKEN BUCKET VIZ ============ */
+.token-viz{display:grid;grid-template-columns:200px 1fr;gap:26px;align-items:center}
+.bucket{position:relative;width:150px;height:170px;margin:0 auto}
+.bucket-body{position:absolute;bottom:0;left:15px;right:15px;top:24px;border:3px solid var(--ltram);border-top:none;border-radius:0 0 22px 22px;background:rgba(90,97,180,.06);overflow:hidden}
+.bucket-fill{position:absolute;left:0;right:0;bottom:0;height:40%;background:linear-gradient(180deg,#7a80c9,#5A61B4);transition:height 1s ease}
+.bucket-fill::before{content:"";position:absolute;top:-6px;left:0;right:0;height:8px;background:#8a8fd0;border-radius:50%}
+.bucket-lip{position:absolute;top:18px;left:6px;right:6px;height:14px;border:3px solid var(--ltram);border-radius:50%;background:var(--card)}
+.bucket-label{position:absolute;width:100%;text-align:center;top:60px;font-family:var(--mono);font-weight:700;color:var(--ltram);font-size:1.1rem;z-index:2}
+.token-controls{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.tbtn{font-family:var(--body);font-weight:700;font-size:.85rem;border:1.5px solid var(--line-strong);background:#fff;border-radius:10px;padding:8px 12px;cursor:pointer;transition:all .15s}
+.tbtn:hover{border-color:var(--ltram);color:var(--ltram)}
+.tbtn:active{transform:translateY(1px)}
+.token-readout{font-family:var(--mono);font-size:.85rem;color:var(--ink-soft);margin-top:10px;min-height:1.4em}
+
+/* RMW step animation */
+.rmw{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}
+.rmw-step{flex:1 1 150px;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:14px}
+.rmw-step h5{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--optane);margin:0 0 10px}
+.blocks{display:flex;gap:3px}
+.blk{flex:1;height:30px;border-radius:5px;background:#e9ddc7;border:1px solid var(--line-strong);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:9px;color:var(--ink-faint)}
+.blk.new{background:var(--ltram);border-color:var(--ltram);color:#fff}
+.rmw-step .cost{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-top:10px}
+
+/* hit/miss bar */
+.hitmiss{display:flex;height:46px;border-radius:10px;overflow:hidden;border:1px solid var(--line);font-family:var(--mono);font-size:12px;font-weight:700}
+.hitmiss .hit{background:var(--dram);color:#fff;display:flex;align-items:center;justify-content:center;flex:0 0 6%}
+.hitmiss .miss{background:var(--optane);color:#fff;display:flex;align-items:center;justify-content:center;flex:1}
+
+/* ============ FAQ ============ */
+.faq details{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);margin:10px 0;overflow:hidden}
+.faq details[open]{box-shadow:var(--shadow-sm);border-color:var(--line-strong)}
+.faq summary{cursor:pointer;list-style:none;padding:16px 20px;font-weight:700;font-size:1.03rem;display:flex;gap:12px;align-items:center}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary .q{font-family:var(--mono);color:var(--honey-deep);font-size:.9rem;flex:0 0 auto}
+.faq summary .chev{margin-left:auto;color:var(--ink-faint);transition:transform .25s}
+.faq details[open] summary .chev{transform:rotate(180deg)}
+.faq .a{padding:0 20px 18px 54px;color:var(--ink-soft);font-size:1rem}
+
+/* practice problems */
+.prob{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:20px 22px;margin:14px 0;box-shadow:var(--shadow-sm)}
+.prob .ptag{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:6px;margin-bottom:10px;font-weight:700}
+.ptag.easy{background:var(--dram-soft);color:#1f5b51}
+.ptag.medium{background:var(--honey-soft);color:#6e4a09}
+.ptag.hard{background:var(--optane-soft);color:#9a3a22}
+.prob .qtext{font-weight:600;margin-bottom:8px}
+.prob details{margin-top:6px}
+.prob summary{cursor:pointer;color:var(--honey-deep);font-weight:700;font-size:.92rem;list-style:none}
+.prob summary::-webkit-details-marker{display:none}
+.prob summary::before{content:"▸ ";font-family:var(--mono)}
+.prob details[open] summary::before{content:"▾ "}
+.prob .ans{margin-top:10px;padding:14px 16px;background:var(--paper-2);border-radius:10px;font-size:.96rem;color:var(--ink-soft)}
+.prob .ans .mis{display:block;margin-top:10px;font-size:.9rem;color:var(--optane);font-style:italic}
+
+/* code sketch */
+pre.sketch{background:#2c2620;color:#f3ead9;border-radius:14px;padding:20px 22px;overflow-x:auto;font-family:var(--mono);font-size:.86rem;line-height:1.7;margin:12px 0;box-shadow:var(--shadow-md)}
+pre.sketch .kw{color:#e8a33d}
+pre.sketch .cm{color:#8a9a7c;font-style:italic}
+
+/* glossary */
+.gloss{columns:2;column-gap:26px}
+.gloss .term-def{break-inside:avoid;margin:0 0 14px;font-size:.95rem}
+.gloss .term-def b{display:block;color:var(--ink);font-family:var(--display);font-size:1rem}
+.gloss .term-def span{color:var(--ink-soft)}
+.subhead{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--honey-deep);margin:28px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+
+/* reading list */
+.read-item{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:18px 20px;margin:12px 0}
+.read-item h4{font-size:1.05rem;margin-bottom:6px}
+.read-item .meta{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-bottom:8px}
+.read-item p{font-size:.94rem;color:var(--ink-soft);margin:0}
+.diff{display:inline-block;font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:5px;font-weight:700;margin-left:6px}
+.diff.easy{background:var(--dram-soft);color:#1f5b51}
+.diff.med{background:var(--honey-soft);color:#6e4a09}
+.diff.hard{background:var(--optane-soft);color:#9a3a22}
+
+/* footer */
+.foot{margin-top:60px;border-top:1px solid var(--line);background:var(--paper-2)}
+.foot .wrap{padding:30px 22px;font-size:.9rem;color:var(--ink-soft);display:flex;flex-wrap:wrap;gap:8px 28px}
+.foot b{color:var(--ink)}
+
+/* reveal on scroll */
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .6s,transform .6s}
+.reveal.in{opacity:1;transform:none}
+
+/* responsive */
+@media(max-width:820px){
+  .paths{grid-template-columns:1fr}
+  .token-viz{grid-template-columns:1fr}
+  .gloss{columns:1}
+  .tier{grid-template-columns:1fr}
+  .tier .tstats{justify-content:flex-start}
+}
+@media(prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+  .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow"><span class="dot"></span>DIMES '26 · A Field Guide for Beginners</span>
+    <h1>Teaching a computer to treat <span class="swash">read‑mostly</span> data differently</h1>
+    <p class="lede">Server memory got expensive and stopped getting cheaper. This is the plain‑English story of <strong>AROM</strong> — one simple rule that could make a cheaper kind of memory actually work.</p>
+    <div class="hero-meta">
+      <span>📄 "The Kernel's Write: Application Read‑Only Memory"</span>
+      <span>🎓 No computer‑science background needed</span>
+      <span>⏱️ ~30 min read</span>
+    </div>
+
+    <div class="rule-plaque">
+      <div class="glyph">📖</div>
+      <p>Any program may <span class="ro">READ</span> the new memory, as often as it likes.<br>Only the operating system may <span class="wo">WRITE</span> to it.<br><em style="font-size:.9rem">Like a library: anyone reads the books, only the librarian shelves them.</em></p>
+    </div>
+  </div>
+</header>
+
+<!-- ============ TAB NAV ============ -->
+<nav class="tabbar-outer">
+  <div class="tabbar" role="tablist">
+    <button class="tab-btn active" data-tab="start"><span class="n">01</span>Start Here</button>
+    <button class="tab-btn" data-tab="idea"><span class="n">02</span>The Big Idea</button>
+    <button class="tab-btn" data-tab="analogies"><span class="n">03</span>Analogies</button>
+    <button class="tab-btn" data-tab="how"><span class="n">04</span>How It Works</button>
+    <button class="tab-btn" data-tab="examples"><span class="n">05</span>Worked Examples</button>
+    <button class="tab-btn" data-tab="practice"><span class="n">06</span>Practice</button>
+    <button class="tab-btn" data-tab="faq"><span class="n">07</span>FAQ</button>
+    <button class="tab-btn" data-tab="reference"><span class="n">08</span>Reference</button>
+  </div>
+</nav>
+
+<main>
+
+<!-- ============ TAB 1: START HERE ============ -->
+<section class="tab-panel active" id="tab-start">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Before you begin</div>
+      <h2>Twelve ideas the paper assumes you know</h2>
+      <p class="sub">Each card clears up a single concept the paper builds on. They're collapsed — tap any one open. Read them in order the first time, or skip to whatever looks unfamiliar.</p>
+    </div>
+
+    <div class="legend" style="margin-top:8px">
+      <span><i style="background:var(--dram)"></i> DRAM — today's fast memory</span>
+      <span><i style="background:var(--ltram)"></i> LtRAM — the new cheap memory</span>
+      <span><i style="background:var(--optane)"></i> Optane — the cautionary tale</span>
+    </div>
+
+    <div class="primer-grid">
+
+      <details class="primer">
+        <summary><span class="pnum">1</span>RAM is not the same as storage (disk / SSD)<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>Picture your desk and a filing cabinet. The desk holds whatever you're working on right now — instant to grab, but small, and cleared off at the end of the day. The cabinet is roomy and keeps everything safe overnight, but it's slower to reach.</p>
+          <p>A computer has both. <b>RAM is the desk</b>: fast, temporary working space, wiped blank when the power goes off. <b>Storage</b> (disk or SSD) is the cabinet: slower, but permanent — your files survive a reboot.</p>
+          <div class="ready"><b>Now you're ready:</b> this paper is entirely about the desk (RAM), never the cabinet. When it says memory is half a server's cost, it means the desk.</div>
+        </div>
+      </details>
+
+      <details class="primer">
+        <summary><span class="pnum">2</span>What computer memory (RAM) actually does<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>Think of RAM like a kitchen whiteboard. While cooking you jot notes — the timer, what's in the oven, the next step. Fast to read, fast to scribble on, and wiped clean when you leave.</p>
+          <p>That's RAM for a computer: its fast, temporary working space. Every running program lives there. When a laptop "has 16 gigs of RAM," that whiteboard is what they mean — and more of it, faster, costs more.</p>
+          <div class="ready"><b>Now you're ready:</b> the paper proposes adding a new, cheaper whiteboard alongside the usual expensive one.</div>
+        </div>
+      </details>
+
+      <details class="primer">
+        <summary><span class="pnum">3</span>The difference between reading and writing data<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>A sticky note on the fridge. You can <b>glance</b> at it (reading) a hundred times without touching it. Or you can <b>cross it out and rewrite</b> it (writing) — slower, takes effort, actually changes the paper.</p>
+          <p>To us these feel like one act. For hardware they're completely separate operations with completely different costs. This gap matters more than any other in the paper: the new memory is wonderful at reading but slow and clumsy at writing.</p>
+          <div class="ready"><b>Now you're ready:</b> the paper's central rule, AROM, is entirely about restricting <i>writes</i> while leaving reads free.</div>
+        </div>
+      </details>
+
+      <details class="primer">
+        <summary><span class="pnum">4</span>What an operating system does<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>Picture an apartment building. Tenants (apps like a browser or game) live in their units but never touch the wiring, plumbing, or front‑door locks. For that there's a building manager with master keys.</p>
+          <p>An operating system — Windows, macOS, Android — is that manager. It's a privileged program between every app and the actual hardware. It can quietly pause an app, do work behind its back, and resume it, and it's the only thing trusted to touch the hardware directly.</p>
+          <div class="ready"><b>Now you're ready:</b> the paper hands the awkward job of managing the new memory to the OS — the one trusted manager — instead of to the memory chip.</div>
+        </div>
+      </details>
+
+      <details class="primer">
+        <summary><span class="pnum">5</span>What copy‑on‑write is<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>A shared document set to "read‑only." Everyone can open it; the edit button is locked. Try to type anyway and the system silently does "Save As," makes a fresh copy just for you, and sends your typing there. The original is never touched.</p>
+          <p>That trick is <b>copy‑on‑write</b> — a decades‑old, ordinary OS technique, not something this paper invented. One word to defuse: when the system notices your write attempt, the technical term is a <b>"fault."</b> That sounds like a crash, but it's just a polite tap on the manager's shoulder.</p>
+          <div class="ready"><b>Now you're ready:</b> copy‑on‑write is exactly how the paper enforces its read‑only rule.</div>
+        </div>
+      </details>
+
+      <details class="primer">
+        <summary><span class="pnum">6</span>Why memory wears out (write endurance)<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>A page you write in pencil, erase, and rewrite. The first few times are fine. But erase and rewrite the same spot enough and the paper thins, smudges, and finally tears.</p>
+          <p>Ordinary RAM is basically magic paper — you can rewrite it endlessly. But some memory is like that pencil page: each tiny cell survives only so many rewrites before it physically dies. Crucially, only <b>writing</b> wears it out — reading is harmless.</p>
+          <div class="ready"><b>Now you're ready:</b> because rewrites are limited, the OS has to ration how often the new memory gets written, so the chip survives its whole life.</div>
+        </div>
+      </details>
+
+      <details class="primer">
+        <summary><span class="pnum">7</span>What a memory page or chunk is<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>A warehouse that only handles standard boxes. Even one small item goes in a whole box, and the forklift only moves complete boxes, never loose items.</p>
+          <p>Memory works the same way. We picture changing one letter at a time, but really memory is handled in fixed‑size chunks: the OS shuffles <b>"pages"</b> of about 4 kilobytes (the standard boxes); the hardware moves smaller 64‑byte chunks into the processor. Nothing happens one loose byte at a time.</p>
+          <div class="ready"><b>Now you're ready:</b> the paper's fix is to always write the new memory one whole 4‑kilobyte page at a time, so the chunks line up neatly and waste disappears.</div>
+        </div>
+      </details>
+
+      <details class="primer">
+        <summary><span class="pnum">8</span>Why memory has a cost plateau<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>A gadget whose price dropped a little every year — until the discount suddenly stops and the price freezes, because one stubborn part inside simply can't be made cheaper. It has hit a permanent floor.</p>
+          <p>That's what happened to ordinary memory (DRAM). For decades it got cheaper per unit of data, then plateaued because of a physical limit in its tiny cells. This is different from a temporary price spike (like the AI‑driven shortage of 2025‑2026); it's a wall that won't move on its own. In data centers, memory is now over half the cost of each server.</p>
+          <div class="ready"><b>Now you're ready:</b> this stuck cost is the whole reason the paper hunts for a cheaper kind of memory to mix in.</div>
+        </div>
+      </details>
+
+      <details class="primer">
+        <summary><span class="pnum">9</span>The hardware / software boundary<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>A restaurant kitchen. The cleverness of a meal can live in one fancy all‑in‑one machine, or in a plain dumb hotplate paired with a skilled chef. Same meal — but you've drawn the line between "machine" and "person" in a totally different place.</p>
+          <p>Computers face the same choice. A memory stick can contain its own little controller chip that hides its quirks (the fancy machine), or that intelligence can live in the OS, leaving the chip simple (the hotplate‑plus‑chef). That dividing line is the <b>hardware/software interface</b> — a contract of who does what, not a screen you click.</p>
+          <div class="ready"><b>Now you're ready:</b> the failed product Optane put all the cleverness in the chip; this paper moves it into the OS, keeping the chip cheap and dumb.</div>
+        </div>
+      </details>
+
+      <details class="primer">
+        <summary><span class="pnum">10</span>What "LtRAM‑as‑peer" means<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>Older systems add cheap memory like a slow basement across the house: roomy but a pain to reach, so anything sent there gets "demoted" and you pay a delay every time you fetch it.</p>
+          <p>This paper does something different: a second shelf right beside your desk, at the same height, just as quick to read from. The cheap new memory (LtRAM) isn't demoted storage and isn't a temporary copy (a "cache"). It's a genuine <b>equal partner</b> to normal memory, holding different kinds of data.</p>
+          <div class="ready"><b>Now you're ready:</b> the paper insists LtRAM is a peer of normal memory, not a slow tier below it — and that framing makes its design different.</div>
+        </div>
+      </details>
+
+      <details class="primer">
+        <summary><span class="pnum">11</span>What an "invariant" means<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>A board game with one rule players promise never to break: "the bank's money is never touched without a receipt." Everything else can vary, but that one rule holds every turn — so everyone plans around it with total confidence.</p>
+          <p>In computer systems that kind of always‑true rule is called an <b>invariant</b>. It just means "a promise the system guarantees will hold at all times, with no exceptions." AROM's invariant: regular programs may only read the new memory, never write it; only the OS writes it. Always.</p>
+          <div class="ready"><b>Now you're ready:</b> when the paper calls AROM an "invariant," it means this read‑only rule is never broken — and that reliability is what makes the approach work.</div>
+        </div>
+      </details>
+
+      <details class="primer">
+        <summary><span class="pnum">12</span>What latency vs bandwidth means<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>A highway. Two different questions: how long does one car's trip take end to end? That's <b>latency</b>. How many cars pass a point each hour? That's <b>bandwidth</b>. A road can have short trips but few lanes, or long trips but many.</p>
+          <p>Memory has both measures. Latency is how long one read or write takes; bandwidth is how much data flows per second. People blur them into "fast," but a memory can be great at one and poor at the other.</p>
+          <div class="ready"><b>Now you're ready:</b> keeping these apart lets you read the paper's performance claims correctly — whether a number is about delay per access or total throughput.</div>
+        </div>
+      </details>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 2: THE BIG IDEA ============ -->
+<section class="tab-panel" id="tab-idea">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">The whole story in one place</div>
+      <h2>AROM, in a nutshell</h2>
+      <p class="sub">The problem, the failed shortcut, and the clean fix — then a map of how every concept connects.</p>
+    </div>
+
+    <div class="prose">
+      <p>Every modern server now spends more than half its hardware budget on one component: memory — the fast "RAM" your computer works out of, called <span class="mem-chip chip-dram">DRAM</span>. Worse, the price of DRAM has stopped falling (a permanent manufacturing wall, not a passing spike), so this cost will only keep growing.</p>
+      <p>The obvious escape is a cheaper memory called <span class="mem-chip chip-ltram">LtRAM</span> (Long‑term RAM): it reads just as fast as DRAM and is far denser and cheaper — but it's slow to write, only in big chunks, and physically wears out if you rewrite the same spot too often. The one product that tried it, Intel <span class="mem-chip chip-optane">Optane</span>, disguised this odd memory as ordinary DRAM by bolting a complicated controller onto the memory stick. That disguise is exactly what made it slow and expensive.</p>
+      <p>This paper's key idea, <strong>AROM (Application Read‑Only Memory)</strong>, throws the disguise away. Picture a library where visitors may read any book but only the librarian may shelve them. AROM lets ordinary programs <strong>only READ</strong> the new memory; only the operating system may write to it, and only when deliberately moving data into place. With small, messy writes forbidden, the memory chip can drop all of Optane's hidden machinery and stay dumb and cheap, while the software handles the awkward parts.</p>
+      <p><strong>The payoff:</strong> across every candidate technology, projected read speed is <strong>26–79% faster than Optane</strong>, landing within 0.9–3.2× of DRAM. The surprise is STT‑MRAM, projected at 0.9× — roughly 72 nanoseconds versus DRAM's 80 — meaning it could match or slightly beat ordinary memory on reads. The catch: STT‑MRAM costs about as much as DRAM and may never scale to DRAM‑sized capacity.</p>
+      <p>The work is honest about what's unsettled. No single LtRAM technology wins on speed, density, endurance, and manufacturability at once, so there's no clear front‑runner yet. And while the OS rations writes to keep the chip within its lifetime budget, it doesn't yet spread that wear evenly.</p>
+    </div>
+
+    <div class="card" style="background:var(--honey-soft);border-color:#EFD9AC">
+      <h3 style="color:#6e4a09">🔑 Key takeaways</h3>
+      <ul style="margin:0;padding-left:20px;color:#6e4a09">
+        <li>LtRAM reads as fast as DRAM but writes slowly, in big chunks, and wears out — so it fits read‑mostly data.</li>
+        <li>One rule (apps may only read LtRAM; only the OS writes it) lets the chip drop all of Optane's costly hidden machinery.</li>
+        <li>Projected reads are 26–79% faster than Optane and within 0.9–3.2× of DRAM.</li>
+        <li>STT‑MRAM can match DRAM read speed (0.9×) but carries DRAM‑level cost and may not scale to DRAM capacity.</li>
+        <li>The OS handles migration invisibly via copy‑on‑write — apps need no changes.</li>
+        <li>Open questions: no single LtRAM technology dominates yet, and wear is bounded in total but not spread evenly.</li>
+      </ul>
+    </div>
+
+    <!-- MEMORY STACK VIZ -->
+    <figure class="viz reveal">
+      <div class="viz-title">The memory stack — speed vs. cost</div>
+      <div class="viz-kicker">Where each kind of memory sits</div>
+      <div class="stack-axes"><span>↑ Faster &nbsp;·&nbsp; closer to the CPU</span><span>cheaper per GB ↓</span></div>
+      <div class="stack">
+        <div class="tier sram">
+          <div><div class="tname">CPU caches (SRAM)</div><div class="trole">The CPU's own scratch pad — not "RAM" in the everyday sense</div></div>
+          <div class="tstats"><span class="stat">read ~1–5 ns</span><span class="stat">write ~1–5 ns</span><span class="stat">megabytes</span></div>
+        </div>
+        <div class="stack-divider"><span>MAIN MEMORY — the CPU touches this at full speed</span></div>
+        <div class="tier dram">
+          <div><div class="tname">DRAM <span class="mem-chip chip-dram">the RAM everyone means</span></div><div class="trole">Fast both ways · effectively unlimited writes · <b>but cost‑per‑bit stopped falling a decade ago</b></div></div>
+          <div class="tstats"><span class="stat">read ~80 ns</span><span class="stat">write ~80 ns</span><span class="stat">cost: HIGH</span></div>
+        </div>
+        <div class="tier ltram">
+          <div><div class="tname">LtRAM <span class="mem-chip chip-ltram">the paper's addition</span></div><div class="trole">Nearly as fast to read · much cheaper · <b>writes are slow & big‑chunk only · wears out</b> · best for data you read all the time but rarely change</div></div>
+          <div class="tstats"><span class="stat">read ~20–300 ns</span><span class="stat">write slow</span><span class="stat">cost: LOW</span></div>
+        </div>
+        <div class="stack-divider"><span>STORAGE — a much slower path to the CPU</span></div>
+        <div class="tier ssd">
+          <div><div class="tname">SSD / NVMe</div><div class="trole">Long‑term file storage, not active working memory</div></div>
+          <div class="tstats"><span class="stat">read ~50–150 µs</span><span class="stat">write ~50–200 µs</span><span class="stat">terabytes</span></div>
+        </div>
+      </div>
+      <figcaption><b>Takeaway:</b> DRAM is fast both ways but expensive. LtRAM is almost as fast to read and much cheaper, but slow to write and it wears out — so you only put data there that you mostly just read. That restriction is exactly what AROM enforces.</figcaption>
+    </figure>
+
+    <!-- CONCEPT MAP -->
+    <figure class="viz reveal">
+      <div class="viz-title">Concept map — how it all fits together</div>
+      <div class="viz-kicker">Why → the new memory → what went wrong → the answer</div>
+
+      <p style="font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);margin:6px 0 10px">① Why, and what's good for it</p>
+      <div class="flow-row">
+        <div class="node"><div class="nt">DRAM cost plateau</div><div class="nd">A cost wall — capacitors can't shrink cheaper</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node n-ltram"><div class="nt">LtRAM</div><div class="nd">Cheap, dense, read‑fast, write‑slow, wears out</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node"><div class="nt">Read‑mostly data</div><div class="nd">Code, AI weights, cached DBs</div></div>
+      </div>
+      <div style="text-align:center;margin:10px 0;color:var(--ink-faint);font-family:var(--mono);font-size:12px">LtRAM sits as a <b>peer</b> beside ↓</div>
+      <div class="flow-row"><div class="node n-dram"><div class="nt">DRAM</div><div class="nd">Fast, symmetric, expensive — the baseline partner</div></div></div>
+
+      <p style="font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--optane);margin:24px 0 10px">② Cautionary tale: Optane (what NOT to do)</p>
+      <div class="flow-row">
+        <div class="node n-optane"><div class="nt">AIT lookup table</div><div class="nd">+76–200 ns on every read (94% miss rate)</div></div>
+        <div class="node n-optane"><div class="nt">Read‑modify‑write</div><div class="nd">4× write amplification, –75% throughput</div></div>
+        <div class="node n-optane"><div class="nt">Hardware wear‑level</div><div class="nd">60 µs latency spikes, unpredictable</div></div>
+      </div>
+      <div style="text-align:center;margin:8px 0;color:var(--optane);font-size:.9rem">A fat on‑stick controller hid LtRAM's quirks — and that hiding is what cost so much.</div>
+
+      <p style="font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--honey-deep);margin:24px 0 10px">③ The paper's answer: AROM + a thin interface</p>
+      <div class="flow-row"><div class="node n-rule" style="max-width:340px"><div class="nt">The AROM invariant</div><div class="nd">"Apps read LtRAM only; only the OS may write it." Always.</div></div></div>
+      <div class="flow-row" style="margin-top:14px">
+        <div class="node"><div class="flow-edge-label" style="margin-bottom:6px">enforced by</div><div class="nt">Copy‑on‑Write</div><div class="nd">OS silently copies a page to DRAM before any app write lands</div></div>
+        <div class="node"><div class="flow-edge-label" style="margin-bottom:6px">enables</div><div class="nt">Thin hardware + smart OS</div><div class="nd">HW: cache‑line reads · 4 KB page writes · cell‑health report.<br>OS: page placement · dirty‑bit scan · token allocator</div></div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ TAB 3: ANALOGIES ============ -->
+<section class="tab-panel" id="tab-analogies">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Eleven everyday pictures</div>
+      <h2>How to think about AROM</h2>
+      <p class="sub">Each picture stands alone — read them in any order. Every card ends with an honest note about where the picture stops being true.</p>
+    </div>
+
+    <div class="analogy-grid">
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 120 96" fill="none">
+          <rect x="30" y="70" width="60" height="8" rx="2" fill="#D8C8AC"/>
+          <path d="M60 28 L34 40 V66 L60 56 Z" fill="#E6E6F6" stroke="#5A61B4" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M60 28 L86 40 V66 L60 56 Z" fill="#fff" stroke="#5A61B4" stroke-width="2.5" stroke-linejoin="round"/>
+          <line x1="60" y1="32" x2="60" y2="56" stroke="#5A61B4" stroke-width="2.5"/>
+          <path d="M40 46 h12 M40 52 h12 M68 46 h12 M68 52 h12" stroke="#9A8E7C" stroke-width="1.5"/>
+          <circle cx="60" cy="20" r="6" fill="#E8A33D"/>
+        </svg></div>
+        <span class="term">The central idea · AROM</span>
+        <h3>The reference‑room encyclopedia</h3>
+        <p>Anyone may walk up and <b>read</b> the giant encyclopedia for free — no limit. But there's one firm house rule: visitors never write in it. If a change is needed, only a <b>librarian</b> makes it, on a fresh copy elsewhere. The shared book stays untouched, so it keeps serving everyone fast. That one rule is what lets all the complicated write‑handling machinery be removed from the hardware.</p>
+        <div class="breaks"><b>Where it misleads:</b> here the data isn't precious for its own sake — once copied off to be edited, the original slot can be reclaimed. And the interception is automatic and invisible, not a conscious request.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 120 96" fill="none">
+          <rect x="28" y="26" width="40" height="52" rx="4" fill="#fff" stroke="#332C24" stroke-width="2.5"/>
+          <path d="M36 38 h24 M36 46 h24 M36 54 h16" stroke="#9A8E7C" stroke-width="2" stroke-linecap="round"/>
+          <rect x="56" y="34" width="40" height="52" rx="4" fill="#FBEACB" stroke="#E8A33D" stroke-width="2.5"/>
+          <path d="M64 46 h24 M64 54 h24 M64 62 h16" stroke="#C27D14" stroke-width="2" stroke-linecap="round"/>
+          <path d="M48 22 q14 -10 24 4" stroke="#2C8C7C" stroke-width="2.5" fill="none" marker-end="url(#ar)"/>
+          <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#2C8C7C"/></marker></defs>
+        </svg></div>
+        <span class="term">Enforcement · Copy‑on‑Write</span>
+        <h3>The kitchen recipe cards</h3>
+        <p>Master recipe cards the whole staff reads all day, with a rule: nobody writes on a master. The instant a cook touches pen to a card, a helper slides a fresh photocopy under the pen so the ink lands on the <b>copy</b>. The master is never marked, and the cook barely notices the swap. That reflex is copy‑on‑write: the moment a program tries to change read‑only data, the system instantly diverts the change to a private copy.</p>
+        <div class="breaks"><b>Where it breaks:</b> the master card stays filed afterward — but here, once data is copied out, the system may discard or reuse the original's slot. The "helper" is just normal machinery reacting in an instant.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 120 96" fill="none">
+          <path d="M30 30 h26 v44 h-26 a4 4 0 0 1 0 -8 v-28 a4 4 0 0 1 0 -8 Z" fill="#E6E6F6" stroke="#5A61B4" stroke-width="2.5"/>
+          <path d="M37 42 h12 M37 50 h12 M37 58 h8" stroke="#5A61B4" stroke-width="2" stroke-linecap="round"/>
+          <rect x="66" y="30" width="30" height="40" rx="3" fill="#fff" stroke="#332C24" stroke-width="2.5"/>
+          <path d="M72 40 q6 6 12 0 q6 -6 0 0" stroke="#2C8C7C" stroke-width="2" fill="none"/>
+          <circle cx="90" cy="76" r="4" fill="#E8A33D"/>
+        </svg></div>
+        <span class="term">The new memory · LtRAM</span>
+        <h3>Stone tablets vs. a whiteboard</h3>
+        <p>Reading a stone tablet is instant — exactly as fast as reading a whiteboard, and stone is cheap to stack densely. But <b>writing</b> on stone is the opposite of easy: carving is slow, you re‑carve a whole tablet rather than fix one letter, and a tablet can only be reground a limited number of times before it crumbles. LtRAM is shaped like that stone: read‑fast and cheap, but write‑slow, big‑chunk only, and it wears out.</p>
+        <div class="breaks"><b>Where it breaks:</b> don't import "stone = sluggish" — reading LtRAM is genuinely as quick as fast memory. And wearing out happens only from re‑carving (rewriting), never from reading or time passing.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 120 96" fill="none">
+          <path d="M38 24 h44 v48 l-22 -10 l-22 10 Z" fill="#fff" stroke="#332C24" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M60 24 v28 l8 6 l-4 -14 l6 -4 l-10 0" fill="#F7E1D8" stroke="#C0563B" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M46 34 h12 M70 34 h6 M46 42 h8" stroke="#9A8E7C" stroke-width="1.8" stroke-linecap="round"/>
+        </svg></div>
+        <span class="term">The key constraint · Endurance</span>
+        <h3>The pencil page that tears</h3>
+        <p>Write in pencil, erase, rewrite — many times, but not infinitely. Each erase scuffs the paper until it thins and finally tears. Crucially, <b>reading</b> costs the paper nothing; you could glance a million times and it stays pristine. Only the erase‑and‑rewrite cycle uses up its life. Write endurance is the same: each cell survives only a bounded number of rewrites, so rewrites are a finite budget to spend carefully.</p>
+        <div class="breaks"><b>Where it breaks:</b> real paper wears gradually; a memory cell works fine then fails abruptly once its budget is gone. And DRAM is "magic paper" that never wears out — the budget is specific to the newer memory.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 120 96" fill="none">
+          <rect x="34" y="22" width="52" height="52" rx="3" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2.5"/>
+          <path d="M60 34 v20 M52 46 l8 8 l8 -8" stroke="#2C8C7C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="46" y="60" width="28" height="8" rx="2" fill="#fff" stroke="#2C8C7C" stroke-width="2"/>
+          <circle cx="42" cy="18" r="3" fill="#E8A33D"/><circle cx="78" cy="18" r="3" fill="#E8A33D"/>
+        </svg></div>
+        <span class="term">The ideal tenant · Read‑mostly data</span>
+        <h3>The laminated evacuation map</h3>
+        <p>People glance at the fire‑exit map constantly, but it's essentially never edited — maybe once in a remodel, years apart. Because it's read often and changed almost never, it makes sense to print and laminate it (cheap, durable, fast to glance at) rather than keep it on an expensive rewritable display. Read‑mostly data is the computer version: program code, a fixed AI model's numbers, a cached lookup table.</p>
+        <div class="breaks"><b>Where it breaks:</b> a poster is reliably static, but real data can suddenly start being edited heavily (a "phase change") — so judging "read‑mostly" only by recent quiet can be wrong.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 120 96" fill="none">
+          <rect x="44" y="24" width="32" height="14" fill="#F3EADA" stroke="#332C24" stroke-width="2"/>
+          <rect x="44" y="38" width="32" height="14" fill="#F3EADA" stroke="#332C24" stroke-width="2"/>
+          <rect x="44" y="52" width="32" height="14" fill="#F3EADA" stroke="#332C24" stroke-width="2"/>
+          <rect x="44" y="66" width="32" height="10" fill="#F7E1D8" stroke="#C0563B" stroke-width="2"/>
+          <rect x="55" y="28" width="4" height="6" fill="#5A61B4"/><rect x="62" y="42" width="4" height="6" fill="#5A61B4"/>
+          <path d="M84 30 v40" stroke="#C0563B" stroke-width="2" stroke-dasharray="3 3"/><text x="88" y="52" font-size="9" fill="#C0563B" font-family="monospace">floor</text>
+        </svg></div>
+        <span class="term">The economic problem · Cost plateau</span>
+        <h3>The apartment‑density floor</h3>
+        <p>A city keeps fitting more apartments onto the same plots by building taller, so density rises every year. You'd expect price per apartment to keep falling — but every unit still needs one costly part (say a special elevator mechanism) that refuses to get cheaper. So even as buildings grow denser, the cost per apartment flattens out. DRAM is exactly this: engineers pack more in, but one stubborn cell ingredient won't get cheaper, so price per gigabyte has stopped falling.</p>
+        <div class="breaks"><b>Where it breaks:</b> a city can also have a temporary rent spike that settles. That's NOT this — the plateau is the permanent floor <i>underneath</i> any spike. Don't mistake the 2025‑26 supply spike for the deeper wall.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 120 96" fill="none">
+          <path d="M40 40 a20 20 0 0 1 40 0 v6 h-40 Z" fill="#E6E6F6" stroke="#5A61B4" stroke-width="2.5"/>
+          <rect x="36" y="46" width="48" height="8" rx="2" fill="#5A61B4"/>
+          <rect x="44" y="54" width="32" height="22" fill="#fff" stroke="#5A61B4" stroke-width="2.5"/>
+          <path d="M58 54 v22 M44 65 h32" stroke="#bcbfe8" stroke-width="1.5"/>
+          <path d="M60 30 v-8" stroke="#332C24" stroke-width="2"/><circle cx="60" cy="20" r="4" fill="#E8A33D"/>
+          <rect x="50" y="58" width="8" height="6" fill="#2C8C7C"/>
+        </svg></div>
+        <span class="term">Keeping the chip alive · Token allocator</span>
+        <h3>The drought water allowance</h3>
+        <p>One well must last the whole dry season, so the family sets a daily bucket allowance sized to reach the first rains. Each chore spends a bucket; quiet days bank unused buckets for a big laundry day later. The token allocator works the same: the OS releases "write tokens" at a steady, precalculated rate, every write spends one, unused tokens accumulate, and because writes can never outrun the token supply, the chip is guaranteed to survive its full lifetime.</p>
+        <div class="breaks"><b>Where it breaks:</b> an allowance controls how MUCH water you use, not WHICH tap you run — you could wear out one valve. Likewise, tokens bound total writing but don't spread it evenly. That's a separate, harder problem the paper flags as unfinished.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 120 96" fill="none">
+          <path d="M38 50 q-4 18 8 20 h8 v-22 q-8 -2 -16 2 Z" fill="#FBEACB" stroke="#C27D14" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M66 50 q-4 18 8 20 h8 v-22 q-8 -2 -16 2 Z" fill="#fff" stroke="#332C24" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M48 34 a14 14 0 0 1 24 0" stroke="#2C8C7C" stroke-width="2.5" fill="none" marker-end="url(#ar2)"/>
+          <defs><marker id="ar2" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#2C8C7C"/></marker></defs>
+        </svg></div>
+        <span class="term">Spreading the wear · Wear leveling</span>
+        <h3>The rotating work boots</h3>
+        <p>You own five pairs and wear one a day. Always grabbing your favorite kills it in a year; instead you <b>rotate</b>, so all five last roughly five times as long. Wear leveling is this rotation for memory: since each location survives only so many rewrites, the system deliberately spreads writing around so no spot wears out far ahead of the rest.</p>
+        <div class="breaks"><b>Where it breaks:</b> some "ceremonial" boots you never wear get nothing from rotation — and similarly, write‑once data sits in a fresh spot that never takes its share of wear (a real gap the paper admits). One earlier memory did this rotation secretly in hardware mid‑use, causing jarring pauses; the paper lets software pick calm moments instead.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 120 96" fill="none">
+          <rect x="26" y="44" width="34" height="30" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2.5"/>
+          <rect x="30" y="40" width="26" height="4" fill="#2C8C7C"/>
+          <rect x="68" y="34" width="28" height="40" rx="2" fill="#E6E6F6" stroke="#5A61B4" stroke-width="2.5"/>
+          <path d="M68 48 h28 M68 60 h28" stroke="#5A61B4" stroke-width="2"/>
+          <circle cx="82" cy="42" r="1.6" fill="#5A61B4"/><circle cx="82" cy="54" r="1.6" fill="#5A61B4"/>
+          <path d="M62 56 h6 M62 56 l-3 -3 M62 56 l-3 3" stroke="#E8A33D" stroke-width="2" stroke-linecap="round"/>
+        </svg></div>
+        <span class="term">Moving data around · Page migration</span>
+        <h3>The desk and the filing cabinet</h3>
+        <p>Documents you're actively editing stay on the desk (fast memory), within instant reach; reference binders you only consult get filed in the cabinet (cheap memory). The arrangement isn't frozen — a binder that suddenly needs heavy editing comes back to the desk first; a desk document that settles down gets filed away. Page migration is this continual moving, steered by how each piece is currently used.</p>
+        <div class="breaks"><b>Where it breaks:</b> moving a folder just leaves an empty slot, but memory has an extra chore — after data returns to fast memory, the freed cheap‑memory slot often must be deliberately wiped before reuse, slow enough to schedule for a quiet moment.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 120 96" fill="none">
+          <circle cx="36" cy="38" r="9" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2.5"/>
+          <circle cx="84" cy="38" r="9" fill="#F7E1D8" stroke="#C0563B" stroke-width="2.5"/>
+          <circle cx="60" cy="40" r="10" fill="#FBEACB" stroke="#C27D14" stroke-width="2.5"/>
+          <path d="M48 36 h6 M66 36 h6" stroke="#9A8E7C" stroke-width="2" marker-end="url(#ar3)"/>
+          <rect x="30" y="56" width="60" height="22" rx="4" fill="#fff" stroke="#332C24" stroke-width="2"/>
+          <path d="M40 66 h8 M56 66 h8 M72 66 h6" stroke="#9A8E7C" stroke-width="2" stroke-linecap="round"/>
+          <defs><marker id="ar3" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 Z" fill="#9A8E7C"/></marker></defs>
+        </svg></div>
+        <span class="term">The cautionary tale · Intel Optane</span>
+        <h3>The simultaneous interpreter</h3>
+        <p>Two people who share no language, with an interpreter relaying every sentence both ways. It works — but every sentence detours through the interpreter, so it's slower, and you pay the interpreter's salary the whole time. Optane took a strange new memory and bolted a translator onto the stick so the computer could talk to it as ordinary memory. The disguise worked, but the translator sat in the middle of every access — and that constant detour made Optane slow and expensive.</p>
+        <div class="breaks"><b>Where it breaks:</b> a human interpreter adds real understanding. Optane's translator added no value — pure overhead papering over a format mismatch, paid on every single read and write.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 120 96" fill="none">
+          <rect x="40" y="26" width="40" height="50" rx="3" fill="#fff" stroke="#332C24" stroke-width="2.5"/>
+          <path d="M48 36 h24 M48 44 h24 M48 52 h24 M48 60 h16" stroke="#9A8E7C" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="44" cy="36" r="1.5" fill="#C0563B"/><circle cx="44" cy="44" r="1.5" fill="#C0563B"/><circle cx="44" cy="52" r="1.5" fill="#C0563B"/>
+          <path d="M84 30 v16 h8" stroke="#C0563B" stroke-width="2.5" fill="none"/>
+          <circle cx="92" cy="46" r="4" fill="#F7E1D8" stroke="#C0563B" stroke-width="2"/>
+        </svg></div>
+        <span class="term">Optane's hidden tax · AIT</span>
+        <h3>The coat‑check ledger</h3>
+        <p>Behind the counter, attendants secretly reshuffle coats all night so no rack overcrowds. Because a coat is never where you left it, every ticket means first looking up its current rack in a big ledger in the back — a delay on every retrieval. The Address Indirection Table is that hidden ledger: a private map translating each address to where data actually sits. It lets the hardware shuffle data, but every read must consult the map first.</p>
+        <div class="breaks"><b>Where it breaks:</b> a coat‑check looks things up only when you leave — a few times a night. The AIT is consulted on essentially every read, so a tiny per‑lookup cost becomes a heavy constant tax. The paper's design removes the shuffling, and thus the ledger, entirely.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 4: HOW IT WORKS ============ -->
+<section class="tab-panel" id="tab-how">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">The full explanation</div>
+      <h2>How it actually works</h2>
+      <p class="sub">The complete walk‑through, section by section, with each of the paper's diagrams rebuilt as a visual you can read at a glance.</p>
+    </div>
+
+    <div class="prose">
+      <h3 style="font-size:1.5rem;margin-top:18px">1 · Introduction — the movie trailer</h3>
+      <p>The fast working memory in servers (<span class="mem-chip chip-dram">DRAM</span>) has become shockingly expensive. At companies like Microsoft and Meta, memory alone is now more than half the cost of a server, and the price per unit has stopped dropping.</p>
+      <p>The proposed solution: mix in a cheaper memory, <span class="mem-chip chip-ltram">LtRAM</span>. It's dense, cheap, and reads as fast as DRAM, but it's slow to write, only in big chunks, and wears out — so it's perfect for data you read constantly but rarely change. The catch is the cautionary tale: Intel <span class="mem-chip chip-optane">Optane</span> made the new memory pretend to be DRAM by bolting a complicated controller onto the stick, and that disguise is exactly what made it slow and pricey. The authors say: stop forcing the disguise. Keep the hardware dumb, and let the OS handle the bookkeeping. Their rule for doing it safely is <strong>AROM</strong> — programs may only READ the new memory.</p>
+      <div class="callout note"><span class="ic">🍳</span><div><b>Analogy.</b> Optane is one expensive all‑in‑one bread machine that secretly does every step but is slow and costly. This paper is a cheap bare hotplate (simple hardware) plus a skilled chef (the OS) who already knows the recipes. Same meal, far cheaper appliance — and the chef only enters the kitchen when an alarm goes off.</div></div>
+      <div class="callout why"><span class="ic">💡</span><div><b>Why it matters for a beginner:</b> the one thing to hold onto is "make the memory chip simple and let the software be smart."</div></div>
+    </div>
+
+    <div class="prose">
+      <h3 style="font-size:1.5rem;margin-top:34px">2 · Motivation — the money problem</h3>
+      <p>Ordinary memory used to get cheaper every year, then stopped. Two things happen at once: computers want more and more memory, and the price per unit has flattened and isn't coming back down. The subtlety: this is a <b>permanent wall, not a passing spike</b>. Yes, an AI‑driven buying frenzy in 2025‑2026 roughly doubled memory prices, and that may ease — but underneath it is a deeper problem. The manufacturing process relies on a special capacitor that refuses to get cheaper as it shrinks, so more density no longer means a lower price per unit.</p>
+      <p>The usual tricks only go so far: you can compress data, or shove rarely‑used data onto slower memory ("tiering"). These help you use memory more efficiently, but none make memory itself fundamentally cheaper per unit. That sets up the pitch: maybe we need a genuinely cheaper kind of memory.</p>
+      <div class="callout note"><span class="ic">🥛</span><div><b>Analogy.</b> Milk that dropped a little every year, then froze — not because the dairy ran out of ideas, but because one stubborn ingredient won't get cheaper. Coupons (compression) and the almost‑expired carton (tiering) trim your bill but never change the frozen base price. To actually pay less, you need a different, cheaper drink.</div></div>
+    </div>
+
+    <div class="prose">
+      <h3 style="font-size:1.5rem;margin-top:34px">3 · LtRAM and the Optane warning</h3>
+      <p>LtRAM is a family of new chips that share a "shape": read as fast as normal memory, much denser and cheaper, but with three matching downsides — writing is slow, writes must be big chunks, and the chip wears out. Candidate technologies have intimidating names (RRAM, PCM, FeFET, MRAM); treat them as brand names, none perfect.</p>
+      <p>Now the cautionary tale. The deep reason Optane cost so much is a <b>chunk‑size mismatch</b>. Inside Optane the smallest writable unit is a 256‑byte block (an "XPLine"), but programs often want to change just a few bytes. The hardware can't touch only those bytes — it must read the whole block, change the small part, and write the whole block back, every time. That's a <b>read‑modify‑write</b>, and it moves roughly 4× as much data as asked. On top of that, a secret lookup table (the AIT) translates every address, and it's too big to keep handy, so most reads pay an extra fetch. Hold onto that chunk‑size mismatch — it's the hinge of the whole paper.</p>
+      <div class="callout note"><span class="ic">🥚</span><div><b>Analogy.</b> LtRAM is a pantry of eggs sold only by the carton. Reading is free, but you can only write a whole carton. To replace one cracked egg you take the whole carton down, swap the egg, and put it all back — that fetch‑swap‑return is the read‑modify‑write dance. The paper's fix: insist everyone always hands over a complete fresh carton, never a single egg, so the costly swap never happens.</div></div>
+    </div>
+
+    <!-- OPTANE OVERHEAD VIZ -->
+    <figure class="viz reveal">
+      <div class="viz-title">Why Optane struggled</div>
+      <div class="viz-kicker">The granularity mismatch and the AIT tax</div>
+
+      <p style="font-weight:700;margin-bottom:6px">A · The chunk‑size mismatch</p>
+      <p style="font-size:.95rem;color:var(--ink-soft)">The CPU wants to change one 64‑byte cache line. Optane's media only writes a whole 256‑byte XPLine — four cache lines wide.</p>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:10px 0 22px">
+        <div style="text-align:center">
+          <div class="blocks" style="width:90px"><div class="blk new" style="font-size:10px">64 B</div></div>
+          <small style="font-family:var(--mono);font-size:10px;color:var(--ink-faint)">what the CPU wants</small>
+        </div>
+        <div style="font-size:1.4rem;color:var(--ink-faint)">↳ trapped inside →</div>
+        <div style="text-align:center">
+          <div class="blocks" style="width:280px"><div class="blk new">64</div><div class="blk">64</div><div class="blk">64</div><div class="blk">64</div></div>
+          <small style="font-family:var(--mono);font-size:10px;color:var(--ink-faint)">one 256‑byte XPLine = 4 cache lines</small>
+        </div>
+      </div>
+
+      <p style="font-weight:700;margin:18px 0 10px">B · The read‑modify‑write dance — 3 media trips for 1 write</p>
+      <div class="rmw">
+        <div class="rmw-step"><h5>① Read</h5><div class="blocks"><div class="blk">old</div><div class="blk">old</div><div class="blk">old</div><div class="blk">old</div></div><div class="cost">fetch full 256 B · ~75 ns</div></div>
+        <div class="rmw-step"><h5>② Modify</h5><div class="blocks"><div class="blk new">NEW</div><div class="blk">old</div><div class="blk">old</div><div class="blk">old</div></div><div class="cost">patch 64 B in scratch · ~0 ns</div></div>
+        <div class="rmw-step"><h5>③ Write</h5><div class="blocks"><div class="blk new">NEW</div><div class="blk">old</div><div class="blk">old</div><div class="blk">old</div></div><div class="cost">write full 256 B back · ~75 ns</div></div>
+      </div>
+      <div class="callout takeaway" style="margin-top:14px"><span class="ic">📉</span><div><b>Result:</b> ~4× write amplification. Random‑write throughput collapses from ~2.3 GB/s to ~0.56 GB/s (−75%). <b>AROM's fix:</b> the OS only ever writes complete 4 KB pages (a multiple of 256 B), so steps ① and ③ collapse into one write — the dance never happens.</div></div>
+
+      <p style="font-weight:700;margin:26px 0 10px">C · The AIT lookup tax — a toll on every single read</p>
+      <p style="font-size:.95rem;color:var(--ink-soft)">Every read must first check Optane's secret Address Indirection Table. Its on‑stick cache covers only ~6% of the chip, so 94% of reads <b>miss</b> and pay an extra media trip.</p>
+      <div class="hitmiss" style="margin:12px 0"><div class="hit">6%<br>HIT</div><div class="miss">94% MISS → extra +76–200 ns before you even get your data</div></div>
+      <table class="tbl">
+        <thead><tr><th>Read scenario</th><th>Total latency</th><th>vs DRAM (80 ns)</th></tr></thead>
+        <tbody>
+          <tr><td>AIT cache HIT (rare)</td><td>351 ns</td><td>4.4× slower</td></tr>
+          <tr><td>AIT cache MISS (most reads)</td><td>427 ns</td><td>5.3× slower</td></tr>
+          <tr style="color:var(--dram)"><td>DRAM reference</td><td>80 ns</td><td>1.0×</td></tr>
+        </tbody>
+      </table>
+
+      <figcaption><b>Takeaway:</b> Optane tried to make weird memory look exactly like normal memory by stuffing a complex translator on the chip. That translator is what made it slow and expensive. AROM's insight: stop translating — expose the memory's quirks honestly and let the OS, which already manages all memory, handle them.</figcaption>
+    </figure>
+
+    <div class="prose">
+      <h3 style="font-size:1.5rem;margin-top:34px">4 · The proposed hardware / software interface</h3>
+      <p>This is the heart of the paper. Having shown that Optane failed by stuffing intelligence into the hardware, the authors flip it: make the hardware deliberately dumb, and move the clever decisions into the OS. The key that makes this safe is <strong>AROM</strong> — programs may only READ the new memory; only the OS writes it, and only when deliberately moving data. If a program tries to change something in LtRAM, the system quietly catches it (copy‑on‑write), copies the data into DRAM first, and lets the write land there. The program never notices.</p>
+      <p>Why does one little rule matter so much? Because it removes the need for all of Optane's hidden machinery. If programs can never make small messy writes — and AROM guarantees that — the hardware never does the read‑modify‑write dance and never needs a hidden translation table. The chip's whole job shrinks to three things: hand over data when read, accept whole 4 KB page writes from the OS, and report how worn each block is.</p>
+      <div class="callout note"><span class="ic">🖼️</span><div><b>Analogy.</b> An art museum. Visitors may LOOK at the paintings but never touch them. The instant someone reaches out to scribble, a guard (the OS) makes a photocopy on ordinary paper and hands them that. The original is never altered. (But unlike a museum, the original isn't kept forever — once your data is copied to DRAM and you're editing it, the system may reclaim the old LtRAM space. The data is <i>moved</i>, not duplicated and preserved.)</div></div>
+    </div>
+
+    <!-- AROM PATHS VIZ -->
+    <figure class="viz reveal">
+      <div class="viz-title">AROM in action</div>
+      <div class="viz-kicker">Reading freely · copying before writing</div>
+      <div class="paths">
+        <div class="path read">
+          <h4>▶ Read path — the fast, common case</h4>
+          <div class="path-stage"><span class="sn">1</span>App asks to read Page A in LtRAM.</div>
+          <div class="path-stage"><span class="sn">2</span>The thin controller fetches the bytes directly — no lookup table, no detour.</div>
+          <div class="path-stage"><span class="sn">3</span>Data comes straight back.</div>
+          <div style="margin-top:12px;padding:10px 14px;background:#fff;border-radius:10px;font-size:.88rem;color:#1f5b51"><b>OS:</b> 😴 sleeping — not involved at all.<br><b>Latency:</b> just the raw LtRAM read time (~20–300 ns).</div>
+        </div>
+        <div class="path write">
+          <h4>▶ Write path — the copy‑on‑write detour</h4>
+          <div class="path-stage"><span class="sn">1</span>App tries to WRITE Page A — but it's protected. The write is frozen.</div>
+          <div class="path-stage"><span class="sn">2</span>Hardware raises a page fault (an alarm). The OS wakes up.</div>
+          <div class="path-stage"><span class="sn">3</span>OS copies the whole 4 KB page A → DRAM (as A′) and remaps the address.</div>
+          <div class="path-stage"><span class="sn">4</span>The write is retried — and now lands on the DRAM copy. ✓</div>
+          <div style="margin-top:12px;padding:10px 14px;background:#fff;border-radius:10px;font-size:.88rem;color:#9a3a22"><b>App thinks:</b> "I wrote Page A." <b>Reality:</b> "You wrote A′ in DRAM. LtRAM was never touched." Later, the OS quietly erases the freed LtRAM block in the background.</div>
+        </div>
+      </div>
+      <div class="callout takeaway" style="margin-top:16px"><span class="ic">📏</span><div><b>The rule in one line:</b> Apps READ LtRAM directly. Apps WRITE DRAM (after an invisible copy). Only the OS kernel ever writes LtRAM — one full 4 KB page at a time.</div></div>
+    </figure>
+
+    <div class="prose">
+      <h3 style="font-size:1.5rem;margin-top:34px">5 · Implementation — did they build it?</h3>
+      <p>Real LtRAM chips don't exist yet, so the team built a stand‑in: a research computer called <b>Enzian</b> (a processor wired to a reprogrammable chip), turning that chip into a pretend memory controller, with cheap <b>NOR flash</b> standing in for the exotic LtRAM. NOR flash isn't ideal, but it has the same "read‑fast, write‑slow, wears‑out" shape. They ran ordinary Linux with new memory‑management rules added.</p>
+      <p>The OS rations writes with a "write token" budget — every move of data into LtRAM spends one, so the chip can never wear out faster than planned. And the headline result: every candidate LtRAM technology comes out <strong>26–79% faster than Optane</strong> on reads, landing between 0.9× and 3.2× of ordinary memory. The best candidate, <b>STT‑MRAM</b>, is projected at about 0.9× — roughly 72 ns against DRAM's 80, i.e. projected to match or slightly beat ordinary memory. Two honest caveats: these are modeled estimates, not measured guarantees, and STT‑MRAM in particular may hit manufacturing hurdles that keep it from DRAM‑class capacity.</p>
+      <div class="callout note"><span class="ic">🎬</span><div><b>Analogy.</b> A movie set. The real building (true LtRAM) doesn't exist yet, so the crew filmed a scene with a cardboard door. The NOR flash is far slower than the target technologies (its reads take ~490 ns), so the prototype's own speed numbers are NOT what the finished product would feel like — it proves the design runs real software correctly; the real speed is estimated separately.</div></div>
+    </div>
+
+    <!-- TOKEN BUCKET VIZ -->
+    <figure class="viz reveal">
+      <div class="viz-title">The write‑token budget</div>
+      <div class="viz-kicker">Rationing LtRAM writes like a data allowance</div>
+      <div class="token-viz">
+        <div>
+          <div class="bucket">
+            <div class="bucket-body"><div class="bucket-fill" id="bucketFill"></div></div>
+            <div class="bucket-lip"></div>
+            <div class="bucket-label" id="bucketLabel">8</div>
+          </div>
+          <div class="token-controls">
+            <button class="tbtn" id="btnTick">+ Earn tokens (1s)</button>
+            <button class="tbtn" id="btnMigrate">Migrate a page (−1)</button>
+            <button class="tbtn" id="btnBurst">Busy burst (−6)</button>
+          </div>
+          <div class="token-readout" id="tokenReadout">Tokens drip in at a fixed rate r = N·E ÷ T.</div>
+        </div>
+        <div>
+          <p style="margin-top:0"><b>How it works.</b> The OS releases write tokens at rate <b>r = N·E ÷ T</b> — where N = total pages, E = erases each page survives, and T = the seconds the chip should last. Every migration into LtRAM spends one token. Quiet periods bank unused tokens for busy bursts; when the bucket hits 0, migrations <b>wait</b>. Because writes can never outrun the token supply, the chip is guaranteed to outlast its deployment — with almost no bookkeeping (just one running count).</p>
+          <div class="callout note" style="margin:12px 0 0"><span class="ic">📱</span><div><b>Like a phone data plan:</b> chip lifetime = your 36‑month plan; token rate = daily allowance; a migration = downloading a file; unused allowance rolls over; when it's gone, wait until tomorrow. You never burn through 36 months in 6.</div></div>
+          <div class="callout takeaway" style="margin:12px 0 0;background:var(--optane-soft);border-color:#e3b4a5;color:#9a3a22"><span class="ic">⚠️</span><div><b>Known limitation (open question):</b> tokens control HOW MUCH is written, not WHERE. Pages written once (code, ML weights) sit frozen and never share wear, so other blocks age faster. Even wear is not yet solved.</div></div>
+        </div>
+      </div>
+    </figure>
+
+    <!-- LATENCY CHART -->
+    <figure class="viz reveal" id="latencyFig">
+      <div class="viz-title">How fast could LtRAM be?</div>
+      <div class="viz-kicker">Projected 128‑byte read latency · lower is better</div>
+      <div class="legend">
+        <span><i style="background:var(--dram)"></i> DRAM target</span>
+        <span><i style="background:var(--ltram)"></i> LtRAM candidates</span>
+        <span><i style="background:var(--optane)"></i> Optane</span>
+        <span><i style="background:#a08d76"></i> NOR prototype</span>
+      </div>
+      <div class="bars" id="latencyBars">
+        <div class="bar-row"><div class="bar-label">DRAM<small>target</small></div><div class="bar-track"><div class="bar-fill bf-dram" data-w="80"><span>80 ns · 1.0×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">STT‑MRAM<small>0.9× ★ best</small></div><div class="bar-track"><div class="bar-fill bf-stt" data-w="72"><span>72 ns · could beat DRAM</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">3D V‑RRAM<small>1.9×</small></div><div class="bar-track"><div class="bar-fill bf-rram" data-w="152"><span>152 ns</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">3D FeFET<small>3.2×</small></div><div class="bar-track"><div class="bar-fill bf-fefet" data-w="252"><span>252 ns</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">Optane<small>4–5×</small></div><div class="bar-track"><div class="bar-fill bf-optane" data-w="340"><span>305–374 ns</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">NOR proto<small>6.6× · stand‑in</small></div><div class="bar-track"><div class="bar-fill bf-nor" data-w="530"><span>530 ns</span></div></div></div>
+      </div>
+      <p style="font-size:.85rem;font-family:var(--mono);color:var(--ink-faint);text-align:right;margin:4px 0 0">scale: 0 ────────────── 600 ns</p>
+      <div class="callout takeaway" style="margin-top:16px"><span class="ic">🏁</span><div><b>All projected LtRAM candidates beat Optane by 26–79%.</b> Strip out Optane's hidden machinery (AROM) and every candidate jumps closer to DRAM; the best is within a rounding error of DRAM speed while staying far cheaper. <b>Caveat:</b> these are modeled projections, not production measurements — and no single technology yet wins on speed, density, cost, and endurance at once.</div></div>
+    </figure>
+
+    <div class="prose">
+      <h3 style="font-size:1.5rem;margin-top:34px">6 · Discussion — honest about the rough edges</h3>
+      <p>The authors place their work next to three earlier buckets: making new memory pretend to be normal memory (Optane — failed on overhead); software that demotes rarely‑used data to a slower "basement" tier; and earlier thinkers who argued new memory deserves its own purpose‑built design. Their key distinction: they do NOT treat the cheap memory as a slow basement underneath DRAM — it's an <b>equal partner</b> beside it, specialized for read‑mostly data.</p>
+      <p>On open questions, they're upfront: which exact technology is best, how to cleverly guess which data is safe to move, how to spread wear when some data is written once and never touched, and how to avoid running out of DRAM if a workload suddenly starts writing a lot. These are flagged as future work, not failures.</p>
+      <h3 style="font-size:1.5rem;margin-top:30px">7 · Conclusion — the recap</h3>
+      <p>Start to finish: DRAM is now more than half a server's cost and its price has stopped falling. A cheaper memory (LtRAM) could help, but disguising it as DRAM (the Optane way) loads on too much hidden overhead. The answer is a thin, simple hardware/software line, made safe by one rule — AROM: programs see the new memory as read‑only, only the OS writes it, and only while deliberately moving data. With that, the chip strips down to almost nothing while the OS takes over the hard decisions. They proved it's real with a stand‑in prototype, aiming to let cheap memory sit as an equal partner to DRAM for read‑mostly data and meaningfully cut server cost.</p>
+      <div class="callout why"><span class="ic">🎯</span><div>If you read one section to "get" the paper, it's this one: the expensive problem, the failed shortcut, and the clean fix — a simple chip plus a smart OS following one read‑only rule.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 5: WORKED EXAMPLES ============ -->
+<section class="tab-panel" id="tab-examples">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Follow one operation, step by step</div>
+      <h2>Worked examples</h2>
+      <p class="sub">A photo service called "Snaply" keeps a 4 GB AI model in memory — read millions of times, written almost never. Let's trace what happens on a read, a write, a wear check, and an Optane failure.</p>
+    </div>
+
+    <div class="card reveal">
+      <h3>① Reading from AROM — the happy path</h3>
+      <p style="color:var(--ink-soft)">Snaply's model lives in cheap <span class="mem-chip chip-ltram">LtRAM</span> (here, the fastest candidate, STT‑MRAM). It needs to read one slice.</p>
+      <ol class="seq">
+        <li><b>Snaply asks for a piece of the model</b> — "give me 64 bytes at address X." It doesn't know or care which chip holds it.</li>
+        <li><b>The hardware sees address X is in LtRAM.</b> No permission check needed — everyone may always READ LtRAM. That's the whole point of the rule.</li>
+        <li><b>The thin controller fetches the bytes directly.</b> No secret lookup table, no bookkeeping, no detour — straight off the media.</li>
+        <li><b>Snaply gets its data — speed depends on the chip.</b> NOR proto ~530 ns, 3D FeFET ~252 ns, 3D V‑RRAM ~152 ns, STT‑MRAM ~72 ns (essentially DRAM's ~80 ns). Snaply chose STT‑MRAM, so the read lands at ~72 ns and feels instant.</li>
+      </ol>
+      <div class="callout takeaway"><span class="ic">🔑</span><div><b>Key insight:</b> reads are 99% of the action for read‑mostly data, and AROM makes them dead simple — nothing clever happens on the read path, so the cheap memory reads at its full native speed. Optane, by contrast, forced every read to first check a hidden table.</div></div>
+    </div>
+
+    <div class="card reveal">
+      <h3>② Writing to AROM data — the copy‑on‑write detour</h3>
+      <p style="color:var(--ink-soft)">A developer nudges one weight — Snaply tries to WRITE 8 bytes at address X, which lives in read‑only LtRAM. Apps may never write LtRAM directly.</p>
+      <ol class="seq">
+        <li><b>Snaply attempts the write</b> — "store these 8 bytes at X," same as any memory.</li>
+        <li><b>The hardware catches it and raises an alarm.</b> The 4 KB page is marked copy‑on‑write. The write is frozen mid‑air — it has NOT happened.</li>
+        <li><b>The OS copies the whole 4 KB page into DRAM.</b> A fresh page in <span class="mem-chip chip-dram">DRAM</span> receives all 4,096 bytes.</li>
+        <li><b>The OS remaps address X</b> to point at the new DRAM copy.</li>
+        <li><b>The write is retried — and now it lands.</b> X is in writable DRAM, so the 8 bytes write instantly. Snaply never noticed the detour.</li>
+        <li><b>The OS reclaims the old LtRAM page later</b> — scheduled for a slow erase in the background, off the hot path.</li>
+      </ol>
+      <div class="callout takeaway"><span class="ic">🔑</span><div><b>Key insight:</b> the read‑only rule is never actually violated. Apps THINK they can write; under the hood the write is silently diverted to DRAM. LtRAM only ever receives writes from the OS, as whole clean 4 KB pages — never a messy 8‑byte poke.</div></div>
+    </div>
+
+    <div class="card reveal">
+      <h3>③ Rationing writes — how tokens keep LtRAM alive</h3>
+      <p style="color:var(--ink-soft)">A small example with round numbers:</p>
+      <ol class="seq">
+        <li><b>Chip specs:</b> N = 1,000,000 pages; each survives E = 100,000 rewrites; target life T = 100,000,000 s (~3 years).</li>
+        <li><b>Total lifetime budget:</b> N × E = 100,000,000,000 (one hundred billion) page‑writes over the whole life.</li>
+        <li><b>Convert to a steady drip:</b> r = N·E ÷ T = 1,000 writes per second. The OS may hand out 1,000 tokens/second on average.</li>
+        <li><b>Spend a token on every move into LtRAM.</b> If tokens are available, the move happens; if the bucket's empty, it waits.</li>
+        <li><b>Bank unused tokens</b> during quiet hours, then spend the balance during a burst — like rolling over phone data. Long‑run average stays 1,000/s.</li>
+        <li><b>Notice what the OS does NOT track:</b> just one running number (the token balance) — not a separate erase count for every page. Because the OS is the only thing that writes LtRAM, counting tokens is enough.</li>
+      </ol>
+      <div class="callout takeaway"><span class="ic">🔑</span><div><b>Key insight:</b> wear is controlled by a single simple accountant — a token bucket dripping at exactly the sustainable rate. The chip is mathematically guaranteed to outlast its deployment with almost no bookkeeping. Caveat the paper names: the budget bounds TOTAL writes, not even distribution across the chip.</div></div>
+    </div>
+
+    <div class="card reveal">
+      <h3>④ Why Optane failed — the granularity‑mismatch walkthrough</h3>
+      <p style="color:var(--ink-soft)">Follow one tiny operation: a program writes a single 64‑byte cache line into <span class="mem-chip chip-optane">Optane</span>, whose media only writes 256‑byte blocks.</p>
+      <ol class="seq">
+        <li><b>The program asks to write 64 bytes</b> (one cache line). Only those bytes need to change.</li>
+        <li><b>The hardware can't write just 64 bytes.</b> They sit inside a 256‑byte block, surrounded by 192 bytes it must not disturb.</li>
+        <li><b>READ</b> the whole 256‑byte block into scratch — 256 bytes moved, just to change 64.</li>
+        <li><b>MODIFY</b> the 64 bytes in the scratch copy; the other 192 stay as they were.</li>
+        <li><b>WRITE</b> the whole patched 256‑byte block back — another 256 bytes moved. That three‑step ritual is the read‑modify‑write.</li>
+        <li><b>Tally the waste:</b> 256 ÷ 64 = <b>4× write amplification</b> (8× total media traffic once you count the read). Throughput collapsed from ~2.3 GB/s to ~0.56 GB/s (−75%). Every small write paid it, every time.</li>
+      </ol>
+      <div class="callout takeaway"><span class="ic">🔑</span><div><b>How it connects:</b> AROM designs this out of existence. Forbid apps from writing LtRAM at all, so the only writes that reach the chip are full 4 KB pages from the OS, which line up with the media. A whole‑page write never splits a block — the dance never happens. That's why AROM can be 26–79% faster than Optane.</div></div>
+    </div>
+
+    <h3 style="font-family:var(--display);font-size:1.5rem;margin-top:40px">Optional code sketches</h3>
+    <p class="prose" style="color:var(--ink-soft)">Pseudocode for the curious — safe to skip.</p>
+
+    <div class="card reveal" style="padding:22px 24px">
+      <p style="margin:0 0 4px;font-weight:700">How the OS handles a write to read‑only memory</p>
+      <pre class="sketch"><span class="cm"># app tries to write to an LtRAM page</span>
+<span class="kw">when</span> app writes to LtRAM page:
+    OS catches the write   <span class="cm"># hardware raises a flag</span>
+    OS copies the page into regular DRAM
+    OS lets the app write to the DRAM copy
+    OS updates its map: app now points to DRAM copy
+    LtRAM original stays unchanged, cleared later</pre>
+      <p style="margin:0;font-size:.94rem;color:var(--ink-soft)">Like a librarian who won't let you write in the reference book but will photocopy the page so you can mark your own copy. The app never notices the swap.</p>
+    </div>
+
+    <div class="card reveal" style="padding:22px 24px">
+      <p style="margin:0 0 4px;font-weight:700">How the OS rations writes to protect LtRAM</p>
+      <pre class="sketch"><span class="kw">every</span> second: add a few tokens to the bucket
+
+<span class="kw">when</span> OS wants to move a page into LtRAM:
+    <span class="kw">if</span> bucket has at least 1 token:
+        spend 1 token
+        write the page to LtRAM
+    <span class="kw">else</span>:
+        hold off — try again later</pre>
+      <p style="margin:0;font-size:.94rem;color:var(--ink-soft)">Total tokens over the device's lifetime equals exactly the total writes the chip can handle, so it can never wear out ahead of schedule.</p>
+    </div>
+
+    <div class="card reveal" style="padding:22px 24px">
+      <p style="margin:0 0 4px;font-weight:700">How reading from LtRAM works — no hidden steps</p>
+      <pre class="sketch"><span class="kw">when</span> app reads data at address X:
+    send address X straight to LtRAM chip
+    LtRAM chip returns the data directly
+    done
+
+<span class="cm"># no lookup table, no translation, no detour</span></pre>
+      <p style="margin:0;font-size:.94rem;color:var(--ink-soft)">Optane consulted a secret address table (the AIT) before every read, adding 76–200 ns. Throwing that table away is the main reason the new design is projected 26–79% faster on reads.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 6: PRACTICE ============ -->
+<section class="tab-panel" id="tab-practice">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Test yourself</div>
+      <h2>Practice problems</h2>
+      <p class="sub">Try each one before opening the answer. Each ends with the common misconception it's checking for.</p>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag easy">Problem 1 · easy</span>
+      <div class="qtext">A game stores level textures (displayed constantly, never changed) in AROM. A modding feature lets a player paint a decal directly onto one. What happens the instant the paint stroke tries to change that texture, and does it succeed?</div>
+      <details><summary>Show answer</summary><div class="ans">The paint stroke is an app write to read‑only LtRAM, which AROM forbids directly. The hardware catches the write and signals the OS (copy‑on‑write). The OS copies the whole 4 KB page into DRAM, repoints the address, and the write is retried there — where it succeeds. So the stroke DOES succeed; it just quietly lands on a DRAM copy. The player never notices.<span class="mis">Misconception: that the write is rejected, errors out, or crashes. Read‑only applies only to the app's direct access — the OS transparently reroutes the write.</span></div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag medium">Problem 2 · medium</span>
+      <div class="qtext">Suppose the designers kept AROM's read‑only rule but ALSO kept Optane's hidden translation table that every read must consult. What does this do to ordinary reads, and does the design still deliver its headline benefit?</div>
+      <details><summary>Show answer</summary><div class="ans">Reads get slower again. AROM reads are fast precisely because the thin controller hands bytes straight off the media with no lookup. Re‑adding the table forces every read to check it first, piling delay back onto the read path — exactly the overhead that hurt Optane. Since read‑mostly data is read far more than anything else, the design would lose much of its advantage and drift back toward Optane‑like performance.<span class="mis">Misconception: that a lookup table only affects writes, or is "just bookkeeping." It taxes every read — the most common operation for this data.</span></div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag medium">Problem 3 · medium</span>
+      <div class="qtext">The art‑museum analogy: visitors may look but not touch, and a guard hands a photocopy to anyone who tries to scribble. Complete and explain: "The analogy breaks down when you assume the original painting ______." What really happens to the original data?</div>
+      <details><summary>Show answer</summary><div class="ans">"...stays safely on the wall forever while you doodle on the copy." In a real museum the original is preserved and you end up with two copies. In AROM the data is MOVED, not duplicated‑and‑kept: once a page is copied to DRAM and is being changed, the system may reclaim and erase the original LtRAM page. The goal is to keep each piece in the single cheapest place that works, not maintain two permanent copies.<span class="mis">Misconception: that LtRAM permanently holds an untouched master while DRAM keeps a duplicate. There's no permanent second copy — the LtRAM page is freed and erased.</span></div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag hard">Problem 4 · hard</span>
+      <div class="qtext">LtRAM is compared to a pantry of eggs sold only by the carton: glance at any egg for free, but only write a whole carton. Name TWO ways this analogy breaks down for real LtRAM, and why each matters.</div>
+      <details><summary>Show answer</summary><div class="ans">(1) Real eggs spoil whether or not you touch them, but LtRAM only degrades from REWRITING — data you leave alone sits safely. This is exactly why read‑mostly data fits: reading never wears the chip. (2) A carton can be refilled endlessly, but an LtRAM block wears thin after enough rewrites (bounded endurance), so the OS must ration rewrites (the token budget). The "whole carton only" part IS accurate (writes happen a full 4 KB page at a time).<span class="mis">Misconception: that reading wears LtRAM out, or that it lasts forever. Reads are harmless; only rewrites consume its life.</span></div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag medium">Problem 5 · medium</span>
+      <div class="qtext">A program wants to change just a few bytes. Describe how Optane handles this versus an AROM system, and explain why AROM avoids the expensive read‑modify‑write entirely.</div>
+      <details><summary>Show answer</summary><div class="ans">Optane accepts the small write directly, but its media writes only in 256‑byte blocks, so it must read the whole block, patch a few bytes, and write it back — the read‑modify‑write dance, moving far more data than asked, every time. AROM forbids apps from writing LtRAM at all: the small write is diverted via copy‑on‑write into DRAM, so it never reaches LtRAM. The only writes LtRAM sees are whole 4 KB pages from the OS, which align with the media — a write never splits a block, so the dance never happens.<span class="mis">Misconception: that AROM makes small writes "fast" via a chip trick. It doesn't speed them up — it prevents them from ever reaching LtRAM, sending them to DRAM instead.</span></div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag medium">Problem 6 · medium</span>
+      <div class="qtext">Both Optane and AROM must spread writes to avoid wear. Optane did it secretly in hardware; AROM uses an OS "write token" budget. Beyond who does the work, what real, observable difference does this make for a running program?</div>
+      <details><summary>Show answer</summary><div class="ans">Optane's hidden hardware wear‑leveling occasionally shuffled data with no warning, causing sudden stalls — a read could freeze for ~60 µs (over 160× a normal read). Because the OS couldn't see it coming, latency was spiky and unpredictable. With AROM, the OS controls wear via a visible token budget and schedules slow erases during quiet moments — same protection, but predictable, with no surprise stalls on the hot path. The observable difference is steady latency versus random spikes.<span class="mis">Misconception: that moving the job to software just makes things slower. The opposite — software control removes the unpredictable stalls.</span></div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag medium">Problem 7 · medium</span>
+      <div class="qtext">You're designing a music‑streaming app on AROM. It holds: (a) program code, (b) the fixed numbers of a recommendation model, (c) a live count of current listeners, (d) each user's playback position, updated every few seconds. Which go in AROM, which stay in DRAM, and why?</div>
+      <details><summary>Show answer</summary><div class="ans">Put read‑mostly data in AROM: (a) program code and (b) the model's fixed numbers are read constantly but essentially never change, so they fit LtRAM and free up DRAM. Keep write‑heavy data in DRAM: (c) the live count and (d) per‑user position change every few seconds, so they belong in fast, freely‑writable DRAM. Placing write‑heavy items in AROM backfires — every update triggers a copy‑on‑write back to DRAM.<span class="mis">Misconception: "cheaper memory = put everything there." Write‑heavy data dragged into AROM just gets copied back to DRAM anyway.</span></div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag hard">Problem 8 · hard</span>
+      <div class="qtext">A large batch sitting happily in AROM as read‑mostly suddenly becomes write‑heavy — a feature flips on and the whole region starts getting written constantly. Walk through what the system must do per write, and why the authors flag this as risky and unsolved.</div>
+      <details><summary>Show answer</summary><div class="ans">Every write now triggers a copy‑on‑write fault: the OS must copy the page from LtRAM into DRAM before the write lands. If a huge region flips at once, the system pays this copy cost over and over, and all that data piles into DRAM — which can fill up and run out. It's unsolved because, unlike slow tiering (where a wrong placement only slows reads), here a wrong placement costs a copy on the critical path of every write and can exhaust DRAM. The authors mention admission control and DRAM‑occupancy watermarks as starting points — listed as future work.<span class="mis">Misconception: that AROM handles any workload gracefully. It's excellent for read‑mostly data; a sudden shift to write‑heavy is exactly where it strains.</span></div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag medium">Problem 9 · medium</span>
+      <div class="qtext">Older systems treated cheap memory as a slow "basement" tier beneath DRAM. AROM insists its LtRAM is an "equal partner" beside DRAM. Using the desk‑and‑shelf analogy, explain the difference — and name the one way LtRAM is still NOT a full equal.</div>
+      <details><summary>Show answer</summary><div class="ans">Older tiering is like renting a slow storage unit across town — cheap but far and slow, for rarely‑touched data. AROM is a second shelf right at desk height — an equal neighbor — because LtRAM reads about as fast as DRAM, so read‑mostly data on it isn't "demoted," just specialized. The one way it's NOT a full equal: LtRAM is still slow to write (and wears out), so it's a peer for READING but not a place for active, frequently‑changed data.<span class="mis">Misconception: "cheaper memory = slower in every way / a downgrade." LtRAM is a peer specifically for reads; the catch is writing, not reading.</span></div></details>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ TAB 7: FAQ ============ -->
+<section class="tab-panel" id="tab-faq">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Quick answers</div>
+      <h2>Frequently asked questions</h2>
+      <p class="sub">Fifteen of the questions a newcomer most often asks. Tap any to expand.</p>
+    </div>
+
+    <div class="faq">
+      <details><summary><span class="q">Q1</span>Why not just buy more DRAM instead of inventing new memory?<span class="chev">▾</span></summary><div class="a">Because DRAM is the single most expensive part of a server — at Microsoft Azure and Meta, memory alone is more than half the total cost, so doubling it would balloon the bill. Worse, the price per unit has stopped falling. The insight: most data in memory is barely ever changed, so you can keep that read‑mostly data in cheaper memory and only pull it into DRAM when it actually needs writing.</div></details>
+      <details><summary><span class="q">Q2</span>What actually happens when an app tries to write to AROM memory?<span class="chev">▾</span></summary><div class="a">Nothing breaks, and the app doesn't even notice. AROM means programs may only read this cheap memory, never write it directly. The instant a program tries to change something, the system catches it, copies that data into fast memory first, and lets the write land on the copy. This catch‑and‑copy reflex is the old, well‑known OS technique called copy‑on‑write.</div></details>
+      <details><summary><span class="q">Q3</span>Is fast new memory like STT‑MRAM something I can buy today?<span class="chev">▾</span></summary><div class="a">No. Real LtRAM chips don't yet exist as products. The team built a stand‑in prototype: a research computer (Enzian) wired to a reprogrammable chip as a memory controller, with cheap NOR flash standing in. The promising speed numbers are projections from a model, not measurements of a finished product. The paper even warns STT‑MRAM may hit manufacturing and scaling hurdles that keep it from DRAM‑class capacity.</div></details>
+      <details><summary><span class="q">Q4</span>What if the OS guesses wrong and moves data that's actually written a lot?<span class="chev">▾</span></summary><div class="a">That's one of the open problems the paper flags. The system moves data into cheap memory based on it looking read‑mostly, but something quiet all morning can suddenly start being edited (a "phase change"). A wrong guess isn't a crash — each write just triggers the copy‑back into fast memory. The real risk is running out of fast memory if a workload suddenly writes a lot. Listed as future work.</div></details>
+      <details><summary><span class="q">Q5</span>How is this different from Intel Optane, which already tried cheap memory?<span class="chev">▾</span></summary><div class="a">Optane disguised the new memory as ordinary memory by bolting a complicated controller onto the stick. That controller translated every access and quietly shuffled data to even out wear, adding delay and cost to nearly every read and write. This paper does the opposite: keep the chip dumb and move the clever bookkeeping into the OS. The key trick is forbidding small writes, so the hardware never needs Optane's costly read‑modify‑write or its hidden translation table. Projected result: 26–79% faster reads.</div></details>
+      <details><summary><span class="q">Q6</span>Why are small writes such a big deal? Optane could write, couldn't it?<span class="chev">▾</span></summary><div class="a">It could, but at a steep price. Optane's smallest physical write is a 256‑byte block, while programs often change just a few bytes. To do that, the hardware read the whole block, changed the small part, and wrote it all back — every time. That read‑modify‑write made the chip move roughly 4× as much data as asked, and random‑write speed collapsed by ~75%. This paper sidesteps it by only ever writing whole 4 KB pages.</div></details>
+      <details><summary><span class="q">Q7</span>Does every application benefit from AROM?<span class="chev">▾</span></summary><div class="a">No. AROM only helps read‑mostly data — read often, changed rarely. Good examples: program code, a fixed AI model's numbers, and cached lookup tables in stores like Redis or Memcached. The cheap memory is slow to write and wears out, so anything you constantly edit belongs in normal fast memory. An app that mostly churns rapidly‑changing data would gain little.</div></details>
+      <details><summary><span class="q">Q8</span>Is AROM a kind of permanent storage, like a hard drive or SSD?<span class="chev">▾</span></summary><div class="a">No — a common mix‑up. AROM is main memory that sits right alongside DRAM and is read by the processor directly, just specialized for data you rarely change. It's not a disk or a place for long‑term files. Although the underlying technologies can physically retain data, the paper treats this as a working partner to DRAM, not a storage tier underneath it.</div></details>
+      <details><summary><span class="q">Q9</span>Is AROM just a cache for DRAM?<span class="chev">▾</span></summary><div class="a">No. A cache keeps a second, temporary copy of data that also lives elsewhere. AROM doesn't — the cheap memory is an equal partner beside DRAM, not a layer that duplicates it. Data lives in one place at a time: read‑mostly data in cheap memory, actively‑written data in DRAM. When a program writes, the data is moved into DRAM and the old slot can be reclaimed. The aim is keeping each piece in the cheapest spot that works, not two copies.</div></details>
+      <details><summary><span class="q">Q10</span>When the system copies my data on a write, did something go wrong?<span class="chev">▾</span></summary><div class="a">Not at all. Copy‑on‑write is normal, expected behavior, not a crash. It's the very mechanism that makes the read‑only rule safe. Writes aren't forbidden; they're transparently redirected onto a fresh copy in fast memory at the moment they happen, so the shared original is never altered and the program keeps working without knowing. The only cost is the work of moving that page.</div></details>
+      <details><summary><span class="q">Q11</span>If this memory wears out from writing, how do they stop it dying early?<span class="chev">▾</span></summary><div class="a">The OS rations writes with a token allocator. It hands out write permits at a steady, precalculated rate, and every move of data into cheap memory spends one. Unused permits bank up for busy spells. Because writes can never outrun the permit supply, the chip is guaranteed to survive its full lifetime — and the system needs only the running permit count, not the wear of every spot. Reads cost nothing, so reading as often as you like never wears it out.</div></details>
+      <details><summary><span class="q">Q12</span>Does this token system fully solve the wear‑out problem?<span class="chev">▾</span></summary><div class="a">Not completely, and the paper says so. The token allocator controls how much writing happens (so the device lasts long enough), but it doesn't guarantee even spreading across the chip. Some spots could be overused while others are barely touched. In particular, data written once at load time and never changed sits in a fresh spot that never takes its share of wear. Spreading wear fairly is a separate, harder, unfinished problem.</div></details>
+      <details><summary><span class="q">Q13</span>Which exact memory technology will AROM actually use?<span class="chev">▾</span></summary><div class="a">The paper doesn't pick a winner — that's itself an open question. Candidates include 3D V‑RRAM, 3D FeFET, PCM, and STT‑MRAM. Each is strong on one trait and weak on another. The projections show all beating Optane, with STT‑MRAM fastest (roughly matching DRAM on read speed) but possibly hard to manufacture at large capacity, while denser candidates like 3D V‑RRAM trade some speed for much lower cost. Choosing is left as future work.</div></details>
+      <details><summary><span class="q">Q14</span>Could a smarter program, maybe using ML, predict which data to move?<span class="chev">▾</span></summary><div class="a">The paper raises exactly this as an open question. Right now the system decides based on how each piece is currently used — pushing data that's gone quiet into cheap memory and pulling it back the moment it gets written. Making that prediction smarter is listed as future work, alongside picking a technology and spreading wear fairly.</div></details>
+      <details><summary><span class="q">Q15</span>Did they prove this is faster than DRAM, or is that still a hope?<span class="chev">▾</span></summary><div class="a">Still a goal, not a proven result — and the paper is upfront. They built a working prototype that runs real Linux correctly, showing the design is buildable. But the headline speed numbers, including the best candidate matching DRAM, are modeled projections of a single read in isolation, not full application measurements. The authors explicitly say real application‑level evaluation and any cost model remain future work.</div></details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 8: REFERENCE ============ -->
+<section class="tab-panel" id="tab-reference">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Look it up</div>
+      <h2>Glossary &amp; further reading</h2>
+      <p class="sub">Every term in one place, then a guided path to go deeper.</p>
+    </div>
+
+    <div class="subhead">Core terms</div>
+    <div class="gloss">
+      <div class="term-def"><b>AROM (Application Read‑Only Memory)</b><span>The central rule: regular programs may only read the new cheaper memory, never write it directly — if a program tries to write, the OS quietly moves the data to fast memory first and lets the write land there.</span></div>
+      <div class="term-def"><b>LtRAM (Long‑term RAM)</b><span>A family of new, cheaper memory chips that read as fast as ordinary memory but write slowly and physically wear out — ideal for data you look at constantly but rarely change.</span></div>
+      <div class="term-def"><b>Mixed DRAM/LtRAM main memory</b><span>The top‑level proposal: put normal fast memory and the new cheaper memory side by side as equals — fast memory for data that changes often, cheap memory for data that's mostly read.</span></div>
+      <div class="term-def"><b>Copy‑on‑Write (CoW)</b><span>A well‑known OS trick the paper reuses: a page is marked read‑only, and the instant a program tries to write it, the OS copies it to fast memory and directs the write to the copy. The program never notices.</span></div>
+      <div class="term-def"><b>Intel Optane (DCPMM)</b><span>The only real‑world LtRAM‑style product you could buy (discontinued 2022), which hid all the new memory's quirks inside a complex on‑module controller — the cautionary example of what not to do.</span></div>
+      <div class="term-def"><b>Wear leveling</b><span>Spreading writes evenly so no single spot wears out early — Optane did this secretly in hardware (causing unpredictable slowdowns), while the paper moves the job into the OS.</span></div>
+      <div class="term-def"><b>Proposed HW/SW interface</b><span>The paper's central invention: keep the memory module deliberately simple — it only reads data, accepts full‑page writes, and reports wear — and hand all the clever decisions to the OS.</span></div>
+      <div class="term-def"><b>Token‑based wear allocator</b><span>An OS part that issues a fixed number of write tokens per second so LtRAM is never written faster than its rated lifetime allows — every page moved into LtRAM spends one token; unused tokens bank up.</span></div>
+    </div>
+
+    <div class="subhead">Supporting terms</div>
+    <div class="gloss">
+      <div class="term-def"><b>DRAM</b><span>The standard fast working memory in every server today — fast both ways, but very expensive because its cost per unit has stopped falling.</span></div>
+      <div class="term-def"><b>DRAM cost‑per‑bit plateau</b><span>The decade‑long stagnation where the price of a gigabyte of DRAM stopped dropping, caused by a physical limit in the tiny capacitor cell — a structural ceiling, not a temporary spike.</span></div>
+      <div class="term-def"><b>On‑DIMM translation layer</b><span>The hidden logic Optane (and flash drives before it) built onto the memory stick to make quirky new memory look ordinary — but all that bookkeeping added the very delays it was supposed to avoid.</span></div>
+      <div class="term-def"><b>AIT (Address Indirection Table)</b><span>A secret lookup table inside Optane recording where each piece of data actually sits, so it can shuffle data to spread wear — every read must consult it first, and it's too big to keep fully in fast cache.</span></div>
+      <div class="term-def"><b>Read‑Modify‑Write / Write Amplification</b><span>The expensive three‑step operation forced when a program changes a few bytes on memory that only writes large blocks: read the block, change the small part, write it all back — ~4× the work requested.</span></div>
+      <div class="term-def"><b>Endurance</b><span>The limited number of times a cell can be written before it fails — unlike DRAM (effectively unlimited), LtRAM has a fixed write budget that must last the whole deployment.</span></div>
+      <div class="term-def"><b>4 KB page write granularity</b><span>The rule that every write to LtRAM is exactly one full memory page, which lines up with the media's native block size and permanently eliminates read‑modify‑write.</span></div>
+      <div class="term-def"><b>Read‑mostly data</b><span>Data programs look at frequently but almost never change — program code, AI model weights, cached lookup tables — exactly what LtRAM holds cheaply and safely.</span></div>
+      <div class="term-def"><b>Page placement policies</b><span>The OS's three‑part strategy: put provably read‑only data directly into LtRAM, move any written page back to fast memory, and periodically promote long‑untouched pages into LtRAM.</span></div>
+      <div class="term-def"><b>Dirty‑bit tracking</b><span>The OS method for finding pages not written recently — a single flag per page checked on a timer; pages with a clear flag are candidates for promotion to LtRAM.</span></div>
+      <div class="term-def"><b>Enzian / NOR flash prototype</b><span>The research testbed: a computer with a reprogrammable chip acting as the LtRAM controller, with cheap NOR flash standing in for real LtRAM, running ordinary Linux.</span></div>
+      <div class="term-def"><b>LtRAM technology candidates</b><span>The shortlist of physical materials that could serve as LtRAM — 3D V‑RRAM, 3D FeFET, PCM, and STT‑MRAM — each trading off speed, density, cost, and endurance.</span></div>
+      <div class="term-def"><b>Projected read latency</b><span>The paper's estimate of a single read through the simplified interface, split into interconnect, controller, and media — showing every candidate 26–79% faster than Optane.</span></div>
+      <div class="term-def"><b>Static‑page wear problem</b><span>An open problem: data written once and never changed always sits in the same blocks, so those blocks never share wear while others exhaust themselves.</span></div>
+      <div class="term-def"><b>Mixed‑workload bandwidth collapse</b><span>An Optane‑specific issue: mixing reads and writes dropped its total read throughput by 67%, whereas DRAM holds bandwidth regardless of the mix.</span></div>
+    </div>
+
+    <div class="subhead">Further reading — conceptual next steps</div>
+    <div class="read-item reveal"><h4>The computer memory hierarchy: RAM, cache, and storage</h4><div class="meta">explainer · 30–45 min</div><p>How computers store data at different speeds and costs. Try "memory hierarchy explained" or "CPU cache vs RAM vs SSD" (Khan Academy, Computerphile, MIT OCW). The whole paper exists because different memory sits at different points on this curve.</p></div>
+    <div class="read-item reveal"><h4>How operating systems manage memory: virtual memory and page tables</h4><div class="meta">short course · 1–2 hrs</div><p>How the OS gives each program its own view of memory, uses 4 KB "pages," and handles a page fault. See the free <i>Operating Systems: Three Easy Pieces</i> (ostep.org). The paper's solution lives almost entirely in the OS memory manager.</p></div>
+    <div class="read-item reveal"><h4>Copy‑on‑write: how the OS shares memory safely</h4><div class="meta">explainer · 20–30 min</div><p>The single mechanical trick the paper uses to enforce AROM. Search "copy‑on‑write Linux explained."</p></div>
+    <div class="read-item reveal"><h4>How flash storage works: cells, erase cycles, and wear leveling</h4><div class="meta">explainer · 30–45 min</div><p>Why flash erases in large blocks, why cells wear out, and how SSDs hide it. NOR flash is the prototype's stand‑in LtRAM, and these properties are shared by all serious LtRAM candidates.</p></div>
+    <div class="read-item reveal"><h4>Why memory is so expensive in cloud data centers</h4><div class="meta">explainer · 20–30 min</div><p>How server hardware costs break down at hyperscalers, and why DRAM became such a large fraction. The paper opens with DRAM being over half of server cost at Azure and Meta.</p></div>
+
+    <div class="subhead">Related papers</div>
+    <div class="read-item reveal"><h4>Storage Class Memory is Dead, All Hail Managed‑Retention Memory <span class="diff med">medium</span></h4><div class="meta">Legtchenko et al. · Microsoft Research · HotOS '25</div><p>Proposes that emerging memory deserves its own purpose‑built interface — the intellectual parent of AROM. Short and accessible.</p></div>
+    <div class="read-item reveal"><h4>Towards Memory Specialization: A Case for Long‑Term and Short‑Term RAM <span class="diff med">medium</span></h4><div class="meta">Li, Abdurrahman, Cleaveland, Legtchenko et al. · DIMES '25</div><p>The paper that coined "LtRAM" — effectively "chapter one" of the story AROM continues.</p></div>
+    <div class="read-item reveal"><h4>Software‑Defined Far Memory in Warehouse‑Scale Computers <span class="diff hard">hard</span></h4><div class="meta">Lagar‑Cavilla, Ahn, Souhlal et al. · Google · ASPLOS '19</div><p>How Google reduced DRAM by compressing cold pages in software — the best pure‑software answer, and why software alone isn't enough.</p></div>
+    <div class="read-item reveal"><h4>Basic Performance Measurements of the Intel Optane DC Persistent Memory Module <span class="diff hard">hard</span></h4><div class="meta">Izraelevitz, Yang, Zhang et al. · arXiv 2019</div><p>The measurement study that found Optane's read bandwidth collapses 67% when reads and writes mix — the hard numbers motivating AROM.</p></div>
+    <div class="read-item reveal"><h4>Pond: CXL‑Based Memory Pooling Systems for Cloud Platforms <span class="diff hard">hard</span></h4><div class="meta">Li, Berger, Hsu et al. · Microsoft/UW‑Madison · ASPLOS 2023</div><p>Sharing a common pool of memory over CXL — source of the "DRAM is more than half of Azure server cost" data point.</p></div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span><b>Paper:</b> "The Kernel's Write: Application Read‑Only Memory" (DIMES '26)</span>
+    <span><b>Level:</b> Novice — no CS background assumed</span>
+    <span><b>Format:</b> Interactive field guide</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- TABS ---- */
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+  var panels = {};
+  document.querySelectorAll('.tab-panel').forEach(function(p){ panels[p.id.replace('tab-','')] = p; });
+
+  function activate(name){
+    btns.forEach(function(b){ b.classList.toggle('active', b.dataset.tab === name); });
+    Object.keys(panels).forEach(function(k){ panels[k].classList.toggle('active', k === name); });
+    // trigger any reveal/anim inside the now-visible panel
+    requestAnimationFrame(function(){ runReveals(); maybeAnimateLatency(); });
+    window.scrollTo({top:0, behavior: reduce ? 'auto' : 'smooth'});
+    if(history.replaceState) history.replaceState(null,'','#'+name);
+  }
+  btns.forEach(function(b){ b.addEventListener('click', function(){ activate(b.dataset.tab); }); });
+  // deep link
+  var initial = (location.hash||'').replace('#','');
+  if(initial && panels[initial]) activate(initial);
+
+  /* ---- SCROLL REVEAL ---- */
+  var io = ('IntersectionObserver' in window) ? new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, {threshold:0.12, rootMargin:'0px 0px -40px 0px'}) : null;
+
+  function runReveals(){
+    document.querySelectorAll('.tab-panel.active .reveal:not(.in)').forEach(function(el){
+      if(reduce || !io){ el.classList.add('in'); }
+      else {
+        var r = el.getBoundingClientRect();
+        if(r.top < window.innerHeight) el.classList.add('in'); else io.observe(el);
+      }
+    });
+  }
+
+  /* ---- LATENCY BARS ---- */
+  var latencyDone = false, MAX_NS = 600;
+  function maybeAnimateLatency(){
+    var fig = document.getElementById('latencyFig');
+    if(!fig || latencyDone) return;
+    if(!fig.closest('.tab-panel').classList.contains('active')) return;
+    var bars = document.getElementById('latencyBars');
+    document.querySelectorAll('#latencyBars .bar-fill').forEach(function(f, i){
+      var w = Math.min(100, (parseFloat(f.dataset.w)/MAX_NS)*100);
+      setTimeout(function(){ f.style.width = w + '%'; }, reduce ? 0 : 120*i);
+    });
+    bars.classList.add('shown');
+    latencyDone = true;
+  }
+
+  /* ---- TOKEN BUCKET ---- */
+  var MAXTOK = 20;
+  var tokens = 8;
+  var fill = document.getElementById('bucketFill');
+  var label = document.getElementById('bucketLabel');
+  var readout = document.getElementById('tokenReadout');
+  function renderBucket(msg){
+    if(!fill) return;
+    fill.style.height = (tokens/MAXTOK*100) + '%';
+    label.textContent = tokens;
+    label.style.color = tokens === 0 ? 'var(--optane)' : 'var(--ltram)';
+    if(msg) readout.textContent = msg;
+  }
+  function bind(id, fn){ var el = document.getElementById(id); if(el) el.addEventListener('click', fn); }
+  bind('btnTick', function(){
+    tokens = Math.min(MAXTOK, tokens + 3);
+    renderBucket('A second passes — 3 tokens drip in. Unused tokens bank up to a cap.');
+  });
+  bind('btnMigrate', function(){
+    if(tokens >= 1){ tokens -= 1; renderBucket('Migrated 1 page into LtRAM — spent 1 token.'); }
+    else { renderBucket('Bucket empty → migration WAITS. The chip is never worn faster than planned.'); }
+  });
+  bind('btnBurst', function(){
+    if(tokens >= 6){ tokens -= 6; renderBucket('Busy burst! Spent 6 banked tokens at once — that\'s what the savings are for.'); }
+    else { var spent = tokens; tokens = 0; renderBucket('Burst drained the bucket ('+spent+' spent). The rest must WAIT for tokens to refill.'); }
+  });
+  renderBucket();
+
+  /* ---- INIT ---- */
+  runReveals();
+  maybeAnimateLatency();
+  window.addEventListener('scroll', runReveals, {passive:true});
+})();
+</script>
+</body>
+</html>

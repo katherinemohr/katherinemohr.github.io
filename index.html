@@ -61,6 +61,11 @@ layout: default
             <a href="{{ pub.pdf }}">PDF</a>
           </span>
           {% endif %}
+          {% if pub.poster %}
+          <span style="font-size: 0.7em;">
+            <a href="{{ pub.poster }}">Poster</a>
+          </span>
+          {% endif %}
 
           <p style="margin: 0 0 0.1em 0; font-size: 0.90em;">
             {%- for author in pub.authors -%}

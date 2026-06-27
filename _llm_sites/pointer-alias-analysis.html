@@ -1,0 +1,1922 @@
+---
+title: "Pointer & Alias Analysis — a memory debugger"
+render_with_liquid: false
+---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pointer &amp; Alias Analysis — a memory debugger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0E1320; --surface:#161D2E; --surface2:#1E2740; --surface3:#27314e;
+  --ink:#E8ECF5; --muted:#8B97B5; --faint:#5A668A;
+  --ptr:#5BC8FF;      /* pointer / points-to edges */
+  --obj:#FFB454;      /* heap / address cells */
+  --alias:#C792EA;    /* may-alias intersection */
+  --danger:#FF5C72;   /* unsound / UB / miscompile */
+  --ok:#4ADE9E;       /* sound / safe */
+  --line:#2A3450;
+  --kw:#7AA2FF; --num:#FFB454; --com:#5A668A; --ptrk:#5BC8FF; --addr:#C792EA;
+  --rad:14px;
+  --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  --disp:'Space Grotesk',system-ui,sans-serif;
+  --body:'Inter',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:
+    radial-gradient(1200px 600px at 80% -10%, #18223a 0%, transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, #15243a 0%, transparent 55%),
+    var(--bg);
+  color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--ptr)}
+h1,h2,h3,h4{font-family:var(--disp);font-weight:600;line-height:1.15;letter-spacing:-.01em}
+.wrap{max-width:1080px;margin:0 auto;padding:0 22px}
+
+/* ---------- top bar ---------- */
+.topbar{position:sticky;top:0;z-index:50;backdrop-filter:blur(10px);
+  background:linear-gradient(180deg,rgba(14,19,32,.96),rgba(14,19,32,.82));
+  border-bottom:1px solid var(--line)}
+.topbar .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding-top:12px;padding-bottom:12px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--disp);font-weight:700;font-size:15px;letter-spacing:.02em}
+.brand .dot{width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok);animation:blink 2.4s infinite}
+@keyframes blink{0%,70%,100%{opacity:1}80%{opacity:.25}}
+.tabs{display:flex;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:4px}
+.tab{font-family:var(--disp);font-weight:600;font-size:13.5px;color:var(--muted);background:none;border:0;
+  padding:7px 16px;border-radius:8px;cursor:pointer;transition:.18s}
+.tab[aria-selected=true]{background:var(--surface3);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.tab:hover{color:var(--ink)}
+.tab:focus-visible{outline:2px solid var(--ptr);outline-offset:2px}
+.legend{display:flex;flex-wrap:wrap;gap:13px;margin-left:auto;font-size:11.5px;color:var(--muted);font-family:var(--mono)}
+.legend .lg{display:flex;align-items:center;gap:6px}
+.swatch{width:13px;height:13px;border-radius:4px;flex:none}
+.sw-ptr{background:var(--ptr)} .sw-obj{background:var(--obj)} .sw-alias{background:var(--alias)} .sw-danger{background:var(--danger)} .sw-ok{background:var(--ok)}
+
+/* ---------- hero ---------- */
+.hero{padding:46px 0 26px;border-bottom:1px solid var(--line)}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--ptr);margin:0 0 14px}
+.hero h1{font-size:clamp(34px,6vw,60px);margin:0 0 16px;font-weight:700}
+.hero h1 .glow{color:var(--ptr);text-shadow:0 0 26px rgba(91,200,255,.35)}
+.hero p.lede{font-size:18px;max-width:62ch;color:#C7D0E6;margin:0 0 8px}
+.hero .sub{color:var(--muted);font-size:14.5px;max-width:62ch}
+
+/* ---------- sections ---------- */
+section.lesson{padding:40px 0;border-bottom:1px solid var(--line)}
+.secnum{font-family:var(--mono);font-size:12.5px;color:var(--faint);letter-spacing:.12em}
+section.lesson h2{font-size:clamp(24px,3.4vw,32px);margin:6px 0 10px}
+section.lesson h3{font-size:19px;margin:30px 0 8px;color:#DCE3F2}
+p{margin:0 0 14px;max-width:74ch}
+.muted{color:var(--muted)}
+strong{color:#fff;font-weight:600}
+em{color:var(--alias);font-style:normal;font-weight:500}
+code.inl{font-family:var(--mono);font-size:.88em;background:var(--surface2);border:1px solid var(--line);
+  border-radius:5px;padding:1px 6px;color:#cfe6ff}
+.tag{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:20px;
+  border:1px solid;vertical-align:middle}
+.tag.may{color:var(--alias);border-color:var(--alias)}
+.tag.must{color:var(--ok);border-color:var(--ok)}
+.tag.no{color:var(--danger);border-color:var(--danger)}
+
+/* ---------- code blocks ---------- */
+.codeblock{font-family:var(--mono);font-size:13.5px;line-height:1.75;background:var(--surface2);
+  border:1px solid var(--line);border-radius:12px;overflow:auto;margin:16px 0;position:relative}
+.codeblock .chrome{display:flex;gap:7px;padding:9px 14px;border-bottom:1px solid var(--line);background:rgba(0,0,0,.18)}
+.codeblock .chrome i{width:11px;height:11px;border-radius:50%;display:inline-block}
+.codeblock .chrome i:nth-child(1){background:#ff5f56}.codeblock .chrome i:nth-child(2){background:#ffbd2e}.codeblock .chrome i:nth-child(3){background:#27c93f}
+.codeblock .chrome .fn{margin-left:10px;color:var(--faint);font-size:12px}
+.codeblock .code{padding:12px 0}
+.cl{display:flex;padding:1px 16px 1px 0;white-space:pre;transition:background .18s}
+.cl .ln{user-select:none;width:38px;text-align:right;color:var(--faint);padding-right:14px;flex:none;border-right:1px solid var(--line);margin-right:14px}
+.cl.active{background:linear-gradient(90deg,rgba(91,200,255,.16),rgba(91,200,255,.02))}
+.cl.active .ln{color:var(--ptr)}
+.cl.active::before{content:"";position:absolute;left:0;width:3px;height:1.75em;background:var(--ptr);box-shadow:0 0 10px var(--ptr)}
+.cl{position:relative}
+.k{color:var(--kw)} .n{color:var(--num)} .c{color:var(--com);font-style:italic} .pt{color:var(--ptrk)} .ad{color:var(--addr)} .fn2{color:#9be7c6}
+
+/* ---------- viz frame ---------- */
+.viz{background:var(--surface);border:1px solid var(--line);border-radius:var(--rad);margin:22px 0;overflow:hidden}
+.viz .vhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:13px 18px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(255,255,255,.02),transparent)}
+.viz .vhead .vt{font-family:var(--disp);font-weight:600;font-size:14.5px}
+.viz .vhead .vtag{font-family:var(--mono);font-size:10.5px;color:var(--faint);border:1px solid var(--line);
+  padding:2px 8px;border-radius:20px;letter-spacing:.06em}
+.viz .vbody{padding:8px 0 0}
+.viz svg{display:block;width:100%;height:auto}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:9px;padding:13px 18px;border-top:1px solid var(--line);
+  background:rgba(0,0,0,.14)}
+.btn{font-family:var(--mono);font-size:12.5px;font-weight:500;color:var(--ink);background:var(--surface3);
+  border:1px solid var(--line);border-radius:9px;padding:7px 14px;cursor:pointer;transition:.16s;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--ptr);color:var(--ptr)}
+.btn:focus-visible{outline:2px solid var(--ptr);outline-offset:2px}
+.btn.primary{background:var(--ptr);color:#08111f;border-color:var(--ptr);font-weight:700}
+.btn.primary:hover{filter:brightness(1.08);color:#08111f}
+.btn[disabled]{opacity:.4;cursor:not-allowed}
+.step-ind{font-family:var(--mono);font-size:12px;color:var(--muted);margin-left:auto}
+.seg{display:inline-flex;background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:3px;gap:2px}
+.seg button{font-family:var(--mono);font-size:12px;color:var(--muted);background:none;border:0;padding:5px 12px;border-radius:6px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--surface3);color:var(--ink)}
+.seg button:focus-visible{outline:2px solid var(--ptr);outline-offset:1px}
+.cap{font-family:var(--body);font-size:13.5px;color:var(--muted);padding:12px 18px;border-top:1px solid var(--line);line-height:1.55}
+.cap b{color:var(--ink)}
+.cap.warn{color:#ffd2d8;background:rgba(255,92,114,.07);border-top-color:rgba(255,92,114,.4)}
+.cap.good{color:#caf6e2;background:rgba(74,222,158,.06);border-top-color:rgba(74,222,158,.35)}
+
+/* svg primitives */
+.cell{fill:var(--surface2);stroke:var(--line);stroke-width:1.5;rx:9}
+.cell.obj{fill:rgba(255,180,84,.12);stroke:var(--obj)}
+.cell.var{fill:rgba(91,200,255,.07);stroke:var(--ptr)}
+.celllabel{font-family:var(--mono);font-size:14px;fill:var(--ink);font-weight:500}
+.cellsub{font-family:var(--mono);font-size:10px;fill:var(--faint)}
+.edge{stroke:var(--ptr);stroke-width:2.4;fill:none;marker-end:url(#arrow);}
+.edge.dim{opacity:.28}
+.edge.killed{stroke:var(--danger);stroke-dasharray:5 4;opacity:.55}
+.fadein{animation:fade .5s ease both}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.pulse{animation:pulse 1s ease}
+@keyframes pulse{0%{filter:drop-shadow(0 0 0 var(--ptr))}40%{filter:drop-shadow(0 0 8px var(--ptr))}100%{filter:drop-shadow(0 0 0 var(--ptr))}}
+.glitch{animation:glitch .5s steps(2) 3}
+@keyframes glitch{0%{transform:translate(0,0)}25%{transform:translate(-2px,1px)}50%{transform:translate(2px,-1px)}75%{transform:translate(-1px,0)}100%{transform:translate(0,0)}}
+
+/* tables */
+table.gt{width:100%;border-collapse:collapse;margin:18px 0;font-size:14px}
+table.gt th,table.gt td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+table.gt th{font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;color:var(--muted);text-transform:uppercase;font-weight:500}
+table.gt td:first-child{color:#fff}
+table.gt code{font-family:var(--mono);font-size:12.5px;color:#cfe6ff}
+
+.note{border-left:3px solid var(--alias);background:rgba(199,146,234,.07);padding:12px 16px;border-radius:0 10px 10px 0;margin:18px 0;font-size:14px;color:#e0d4f0}
+.callout{border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:18px 0;background:var(--surface)}
+
+.two{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.two>div{padding:6px 4px}
+.two .pane-h{font-family:var(--disp);font-weight:600;font-size:13px;text-align:center;padding:8px;color:var(--muted)}
+.two .pane-h.A{color:var(--ptr)} .two .pane-h.S{color:var(--alias)}
+.divider{width:1px;background:var(--line)}
+@media(max-width:720px){.two{grid-template-columns:1fr}.divider{display:none}.legend{font-size:10.5px;gap:9px}}
+
+.foot{padding:40px 0 70px;color:var(--faint);font-size:13px}
+.tabpanel[hidden]{display:none}
+:focus-visible{outline-offset:2px}
+.kbdhint{font-family:var(--mono);font-size:11px;color:var(--faint)}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
+
+/* ---------- quiz ---------- */
+.scorebar{position:sticky;top:64px;z-index:30;display:flex;flex-wrap:wrap;align-items:center;gap:14px;
+  background:linear-gradient(180deg,rgba(22,29,46,.97),rgba(22,29,46,.9));backdrop-filter:blur(8px);
+  border:1px solid var(--line);border-radius:12px;padding:12px 18px;margin:18px 0 8px}
+.scorebar .score{font-family:var(--disp);font-weight:700;font-size:18px;color:var(--ink)}
+.scorebar .score b{color:var(--ok)}
+.scorebar .scoresub{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.scorebar .barwrap{flex:1;min-width:120px;height:8px;background:var(--surface2);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.scorebar .barfill{height:100%;width:0;background:linear-gradient(90deg,var(--ok),var(--ptr));transition:width .4s ease}
+.qgrouphead{font-family:var(--mono);font-size:12.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);
+  margin:34px 0 4px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.qcard{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px 20px;margin:18px 0}
+.qcard .qnum{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.1em}
+.qcard .qprompt{font-family:var(--body);font-size:16px;color:#DCE3F2;margin:4px 0 12px;line-height:1.5}
+.qcard .qprompt code{font-family:var(--mono);font-size:.88em;background:var(--surface2);border:1px solid var(--line);
+  border-radius:5px;padding:1px 6px;color:#cfe6ff}
+.opts{display:flex;flex-direction:column;gap:9px;margin:12px 0}
+.opt{display:flex;align-items:flex-start;gap:11px;width:100%;text-align:left;font-family:var(--body);font-size:14.5px;
+  color:var(--ink);background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:11px 14px;
+  cursor:pointer;transition:.16s}
+.opt:hover:not([disabled]){border-color:var(--ptr)}
+.opt:focus-visible{outline:2px solid var(--ptr);outline-offset:2px}
+.opt[disabled]{cursor:default}
+.opt .key{font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--muted);flex:none;
+  width:22px;height:22px;border-radius:6px;background:var(--surface3);display:inline-flex;align-items:center;justify-content:center}
+.opt .otext{flex:1}
+.opt .mark{font-family:var(--mono);font-weight:700;flex:none;margin-left:auto}
+.opt.correct{border-color:var(--ok);background:rgba(74,222,158,.1)}
+.opt.correct .key{background:var(--ok);color:#08130d}
+.opt.correct .mark{color:var(--ok)}
+.opt.wrong{border-color:var(--danger);background:rgba(255,92,114,.1)}
+.opt.wrong .key{background:var(--danger);color:#1a0507}
+.opt.wrong .mark{color:var(--danger)}
+.opt.reveal{border-color:var(--ok);border-style:dashed}
+.opt.reveal .mark{color:var(--ok)}
+.explain{margin-top:12px;border-left:3px solid var(--alias);background:rgba(199,146,234,.07);
+  padding:11px 15px;border-radius:0 10px 10px 0;font-size:14px;color:#e0d4f0;line-height:1.55}
+.explain.good{border-left-color:var(--ok);background:rgba(74,222,158,.07);color:#caf6e2}
+.explain.bad{border-left-color:var(--danger);background:rgba(255,92,114,.07);color:#ffd2d8}
+.explain[hidden]{display:none}
+.qcard textarea.fra{width:100%;font-family:var(--mono);font-size:13px;color:var(--ink);background:var(--surface2);
+  border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin:6px 0 12px;resize:vertical;min-height:90px;line-height:1.55}
+.qcard textarea.fra:focus-visible{outline:2px solid var(--ptr);outline-offset:1px}
+.model{margin-top:6px}
+.model[hidden]{display:none}
+.model .mhead{font-family:var(--disp);font-weight:600;font-size:14px;color:var(--ok);margin:0 0 8px}
+.model ul{margin:0 0 12px;padding-left:20px}
+.model li{margin:0 0 8px;font-size:14px;color:#dce3f2;line-height:1.55;max-width:none}
+.model li code{font-family:var(--mono);font-size:.86em;background:var(--surface2);border:1px solid var(--line);
+  border-radius:5px;padding:1px 5px;color:#cfe6ff}
+.model .grading{border-left:3px solid var(--obj);background:rgba(255,180,84,.07);padding:10px 14px;
+  border-radius:0 10px 10px 0;font-size:13.5px;color:#ffe6c2;line-height:1.55}
+.model .grading b{color:#fff}
+
+/* ---------- interview ---------- */
+.iv-intro{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:16px 20px;margin:18px 0 6px;
+  font-size:14.5px;color:#cdd6ea;line-height:1.6}
+.iv-intro strong{color:#fff}
+.iv-bar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:14px 0 4px}
+.iv-bar .lbl{font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+.ivcard{border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,rgba(199,146,234,.04),transparent),var(--surface);
+  padding:20px 22px;margin:20px 0;position:relative;overflow:hidden}
+.ivcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--alias),transparent)}
+.ivcard .chip{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10.5px;font-weight:700;
+  letter-spacing:.1em;text-transform:uppercase;padding:4px 11px;border-radius:20px;border:1px solid;margin-bottom:12px}
+.ivcard .chip .lvl{font-weight:400;opacity:.8;letter-spacing:.06em}
+.ivcard .scenario{font-family:var(--disp);font-weight:500;font-size:18.5px;line-height:1.42;color:#EEF2FB;margin:0 0 4px;
+  display:flex;gap:12px}
+.ivcard .scenario .quote{flex:none;color:var(--alias);font-size:26px;line-height:1;font-family:var(--disp);opacity:.7}
+.ivcard .scenario code{font-family:var(--mono);font-size:.82em;background:var(--surface2);border:1px solid var(--line);
+  border-radius:5px;padding:1px 6px;color:#cfe6ff;font-weight:400}
+.ivcard .askedby{font-family:var(--mono);font-size:11px;color:var(--faint);margin:8px 0 0 32px}
+.iv-probes{margin:16px 0 4px}
+.iv-probes .ph{font-family:var(--disp);font-weight:600;font-size:13.5px;color:var(--obj);margin:0 0 9px;
+  display:flex;align-items:center;gap:8px}
+.iv-probes ol{list-style:none;counter-reset:probe;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.iv-probes li{counter-increment:probe;position:relative;padding:9px 14px 9px 44px;font-size:14px;color:#d3dcef;
+  background:var(--surface2);border:1px solid var(--line);border-radius:10px;line-height:1.5;max-width:none}
+.iv-probes li::before{content:counter(probe);position:absolute;left:12px;top:9px;width:22px;height:22px;border-radius:7px;
+  background:rgba(255,180,84,.14);color:var(--obj);font-family:var(--mono);font-size:12px;font-weight:700;
+  display:inline-flex;align-items:center;justify-content:center}
+.iv-probes li code{font-family:var(--mono);font-size:.86em;background:var(--bg);border:1px solid var(--line);
+  border-radius:5px;padding:1px 5px;color:#cfe6ff}
+.iv-reveal{margin-top:16px}
+.iv-reveal[hidden]{display:none}
+.iv-reveal .mhead{font-family:var(--disp);font-weight:600;font-size:14px;color:var(--ok);margin:0 0 4px}
+.iv-reveal .msub{font-family:var(--mono);font-size:11px;color:var(--faint);margin:0 0 10px}
+.iv-reveal ol.answer{margin:0 0 14px;padding-left:22px;display:flex;flex-direction:column;gap:9px}
+.iv-reveal ol.answer li{font-size:14px;color:#dce3f2;line-height:1.58;max-width:none}
+.iv-reveal ol.answer li code{font-family:var(--mono);font-size:.86em;background:var(--surface2);border:1px solid var(--line);
+  border-radius:5px;padding:1px 5px;color:#cfe6ff}
+.iv-signal{border:1px solid rgba(91,200,255,.4);border-left:4px solid var(--ptr);background:rgba(91,200,255,.06);
+  border-radius:0 12px 12px 0;padding:13px 16px;margin:6px 0 12px}
+.iv-signal .sh{font-family:var(--disp);font-weight:600;font-size:13px;color:var(--ptr);margin:0 0 6px;
+  letter-spacing:.02em;display:flex;align-items:center;gap:8px}
+.iv-signal .sbody{font-size:13.5px;color:#d7e6f5;line-height:1.6}
+.iv-signal .sbody code{font-family:var(--mono);font-size:.86em;background:var(--bg);border:1px solid var(--line);
+  border-radius:5px;padding:1px 5px;color:#cfe6ff}
+.iv-ground{font-family:var(--mono);font-size:11.5px;color:var(--faint);line-height:1.55;margin-top:2px}
+.iv-ground code{background:var(--surface2);border:1px solid var(--line);border-radius:4px;padding:0 4px;color:#9fb0d4}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span>pts&amp;<span style="color:var(--ptr)">alias</span>·dbg</div>
+    <div class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab" id="tab-lesson" role="tab" aria-selected="true" aria-controls="panel-lesson">Lesson</button>
+      <button class="tab" id="tab-examples" role="tab" aria-selected="false" aria-controls="panel-examples">Examples</button>
+      <button class="tab" id="tab-quiz" role="tab" aria-selected="false" aria-controls="panel-quiz">Quiz</button>
+      <button class="tab" id="tab-interview" role="tab" aria-selected="false" aria-controls="panel-interview">Interview</button>
+    </div>
+    <div class="legend" aria-label="Color legend">
+      <span class="lg"><span class="swatch sw-ptr"></span>points-to edge</span>
+      <span class="lg"><span class="swatch sw-obj"></span>heap / address cell</span>
+      <span class="lg"><span class="swatch sw-alias"></span>may-alias (∩)</span>
+      <span class="lg"><span class="swatch sw-danger"></span>unsound / miscompile</span>
+      <span class="lg"><span class="swatch sw-ok"></span>sound / safe</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- ============ LESSON PANEL ============ -->
+<div id="panel-lesson" class="tabpanel" role="tabpanel" aria-labelledby="tab-lesson">
+
+<div class="hero">
+  <p class="eyebrow">interprocedural analysis · the gate before every memory optimization</p>
+  <h1>What can this pointer <span class="glow">actually</span> point to?</h1>
+  <p class="lede">Pointer &amp; alias analysis decides whether two memory references can touch the same cell. Get it right and the optimizer is free to reorder, hoist, and forward. Get it wrong by one bit and you ship a miscompile.</p>
+  <p class="sub">This page is a debugger, not a blog post. Step the visualizations: watch points-to sets propagate, nodes coalesce, kills strike old arrows out, and the danger color flash the moment soundness breaks.</p>
+</div>
+
+<!-- SECTION 1 -->
+<section class="lesson" id="s1">
+  <div class="secnum">§ 01 — first principles</div>
+  <h2>What aliasing is, and why it gates everything</h2>
+  <p>Two expressions <strong>alias</strong> if they <em>may denote the same storage location</em> at runtime. <code class="inl">*p</code> and <code class="inl">x</code> alias if <code class="inl">p</code> may hold <code class="inl">&amp;x</code>. Aliasing is a relation over access paths, derived from a <strong>points-to</strong> relation over pointers — "what objects can <code class="inl">p</code> point to?"</p>
+
+  <p>Watch a points-to graph form. Each statement adds a directed pointer edge; after <code class="inl">p = q</code>, <code class="inl">p</code> copies <code class="inl">q</code>'s target and gains an arrow to <code class="inl">b</code>.</p>
+
+  <div class="viz" id="viz1">
+    <div class="vhead"><span class="vt">Points-to graph stepper</span><span class="vtag">live memory</span></div>
+    <div class="codeblock" style="margin:0;border:0;border-bottom:1px solid var(--line);border-radius:0">
+      <div class="code" id="v1code">
+        <div class="cl" data-l="0"><span class="ln">1</span><span class="pt">p</span> = &amp;<span class="ad">a</span>;   <span class="c">// {a} ⊆ pts(p)</span></div>
+        <div class="cl" data-l="1"><span class="ln">2</span><span class="pt">q</span> = &amp;<span class="ad">b</span>;   <span class="c">// {b} ⊆ pts(q)</span></div>
+        <div class="cl" data-l="2"><span class="ln">3</span><span class="pt">p</span> = <span class="pt">q</span>;    <span class="c">// pts(q) ⊆ pts(p)  [copy]</span></div>
+      </div>
+    </div>
+    <div class="vbody"><svg id="v1svg" viewBox="0 0 700 230" role="img" aria-label="Points-to graph"></svg></div>
+    <div class="controls">
+      <button class="btn primary" data-act="play">▶ Play</button>
+      <button class="btn" data-act="step">Step ▸</button>
+      <button class="btn" data-act="reset">⟲ Reset</button>
+      <span class="step-ind" data-ind>step 0 / 3</span>
+    </div>
+    <div class="cap" data-cap>Press <b>Step</b>. pts(p) and pts(q) build up; after line 3, pts(p) = {a, b}.</div>
+  </div>
+
+  <h3>Two flavors — the difference is the whole game</h3>
+  <p><span class="tag may">may-alias</span> the pair <em>might</em> refer to the same location on <em>some</em> execution. An over-approximation; a "yes" can be a false positive. Used to <strong>forbid</strong> unsafe transforms — if two refs may alias, you cannot reorder them.</p>
+  <p><span class="tag must">must-alias</span> the pair <em>definitely</em> refers to the same location on <em>every</em> reaching execution. An under-approximation; a "yes" is a guarantee. Used to <strong>enable</strong> transforms — forward a stored value only if the pointers must-alias.</p>
+  <div class="note"><strong>Mnemonic.</strong> may-alias is for safety (don't break things); must-alias is for opportunity (rewrite aggressively). Two pointers <strong>may-alias iff their points-to sets intersect</strong>. Empty intersection ⇒ provably no-alias ⇒ the optimizer is free.</div>
+
+  <div class="viz" id="viz2">
+    <div class="vhead"><span class="vt">May vs Must alias</span><span class="vtag">set intersection</span>
+      <span class="seg" role="group" aria-label="alias mode" style="margin-left:auto">
+        <button data-mode="may" aria-pressed="true">May-alias</button>
+        <button data-mode="must" aria-pressed="false">Must-alias</button>
+      </span>
+    </div>
+    <div class="vbody"><svg id="v2svg" viewBox="0 0 700 250" role="img" aria-label="points-to set buckets"></svg></div>
+    <div class="cap" data-cap></div>
+  </div>
+
+  <h3>Why aliasing is the enabling/blocking analysis</h3>
+  <p>Every transform that moves, removes, or reorders a memory op must first prove the locations are independent. Without alias info, the compiler must assume <strong>any store may clobber any load</strong> — which kills:</p>
+  <table class="gt">
+    <tr><th>Optimization</th><th>What it needs alias info to prove</th></tr>
+    <tr><td>Dead store elimination</td><td>a store to <code>*p</code> is dead only if no later load may-alias it</td></tr>
+    <tr><td>Load/store forwarding</td><td>replace <code>y=*q</code> with the stored value only if <code>p</code> <b>must-alias</b> <code>q</code></td></tr>
+    <tr><td>GVN / CSE over memory</td><td>two loads of <code>*p</code> match only if no intervening store may-alias <code>p</code></td></tr>
+    <tr><td>Register promotion</td><td>promote <code>*p</code> to SSA only if <code>p</code> doesn't may-alias an escaping access</td></tr>
+    <tr><td>LICM of a load</td><td>hoist <code>*p</code> from a loop only if no store in the loop may-alias <code>p</code></td></tr>
+    <tr><td>Vectorization</td><td>dependence between <code>a[i]</code> and <code>a[i-k]</code> proven absent or distant</td></tr>
+  </table>
+
+  <h3>Wrong alias info breaks a transform — the miscompile</h3>
+  <p>This is the most important interaction on the page. The optimizer wants to forward S1's stored <code class="inl">1</code> into the load at L2. That is legal only if no intervening store may-alias <code class="inl">p</code>. Toggle the analysis assumption and the runtime pointer relationship, then play it.</p>
+
+  <div class="viz" id="viz3">
+    <div class="vhead"><span class="vt">The miscompile demo</span><span class="vtag">soundness</span></div>
+    <div class="codeblock" style="margin:0;border:0;border-bottom:1px solid var(--line);border-radius:0">
+      <div class="code" id="v3code">
+        <div class="cl" data-l="0"><span class="ln">S1</span><span class="k">store</span> <span class="n">1</span>, *<span class="pt">p</span>      <span class="c">// write through p</span></div>
+        <div class="cl" data-l="1"><span class="ln">S2</span><span class="k">store</span> <span class="n">7</span>, *<span class="pt">q</span>      <span class="c">// write through q</span></div>
+        <div class="cl" data-l="2"><span class="ln">L2</span><span class="pt">z</span> = <span class="k">load</span> *<span class="pt">p</span>   <span class="c">// read back through p</span></div>
+      </div>
+    </div>
+    <div class="controls" style="border-top:0">
+      <span class="seg" role="group" aria-label="analysis assumption">
+        <button data-assume="noalias" aria-pressed="true">assume NoAlias(p,q)</button>
+        <button data-assume="may" aria-pressed="false">sound (MayAlias)</button>
+      </span>
+      <span class="seg" role="group" aria-label="runtime relation">
+        <button data-rt="ne" aria-pressed="true">runtime: p ≠ q</button>
+        <button data-rt="eq" aria-pressed="false">runtime: p == q</button>
+      </span>
+    </div>
+    <div class="vbody"><svg id="v3svg" viewBox="0 0 700 250" role="img" aria-label="memory cells and forwarding"></svg></div>
+    <div class="controls">
+      <button class="btn primary" data-act="play">▶ Run</button>
+      <button class="btn" data-act="step">Step ▸</button>
+      <button class="btn" data-act="reset">⟲ Reset</button>
+      <span class="step-ind" data-ind>step 0 / 3</span>
+    </div>
+    <div class="cap" data-cap></div>
+  </div>
+</section>
+
+<!-- SECTION 2 -->
+<section class="lesson" id="s2">
+  <div class="secnum">§ 02 — precision axes</div>
+  <h2>The dimensions of precision</h2>
+  <p>Analyses are classified by which axes of program structure they distinguish. Each axis costs more but buys precision: <strong>flow</strong> (order), <strong>context</strong> (callers), <strong>field</strong> (struct members), <strong>heap</strong> (object naming). They multiply — which is the scalability wall.</p>
+
+  <h3>Flow-sensitivity — does statement order matter?</h3>
+  <p>Flow-<em>insensitive</em> computes one global points-to map valid everywhere; an assignment only <strong>generates</strong> facts, never <strong>kills</strong> them. Flow-<em>sensitive</em> computes a solution per program point, tracking gen <em>and</em> kill — a re-assignment kills the old target (a <strong>strong update</strong>). Toggle the mode and watch line 2 strike the old <code class="inl">p→a</code> arrow.</p>
+
+  <div class="viz" id="viz6">
+    <div class="vhead"><span class="vt">Flow-sensitivity &amp; strong update (kill)</span><span class="vtag">gen / kill</span>
+      <span class="seg" role="group" aria-label="flow mode" style="margin-left:auto">
+        <button data-flow="insens" aria-pressed="true">flow-INsensitive</button>
+        <button data-flow="sens" aria-pressed="false">flow-Sensitive</button>
+      </span>
+    </div>
+    <div class="codeblock" style="margin:0;border:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:0">
+      <div class="code" id="v6code">
+        <div class="cl" data-l="0"><span class="ln">1</span><span class="pt">p</span> = &amp;<span class="ad">a</span>;</div>
+        <div class="cl" data-l="1"><span class="ln">2</span><span class="pt">p</span> = &amp;<span class="ad">b</span>;   <span class="c">// flow-sensitive: KILLS p→a</span></div>
+        <div class="cl" data-l="2"><span class="ln">3</span><span class="pt">x</span> = *<span class="pt">p</span>;   <span class="c">// what does *p alias?</span></div>
+      </div>
+    </div>
+    <div class="vbody"><svg id="v6svg" viewBox="0 0 700 230" role="img" aria-label="kill demo"></svg></div>
+    <div class="controls">
+      <button class="btn primary" data-act="play">▶ Play</button>
+      <button class="btn" data-act="step">Step ▸</button>
+      <button class="btn" data-act="reset">⟲ Reset</button>
+      <span class="step-ind" data-ind>step 0 / 3</span>
+    </div>
+    <div class="cap" data-cap></div>
+  </div>
+
+  <h3>Context-sensitivity — are different calls distinguished?</h3>
+  <p>Context-<em>insensitive</em> analyzes a procedure once; all call sites merge. Context-<em>sensitive</em> specializes per calling context (clones per call site), so facts from caller A don't leak into caller B. With the identity function below, merging makes <code class="inl">a</code> spuriously may-alias <code class="inl">y</code> and <code class="inl">b</code> may-alias <code class="inl">x</code>.</p>
+
+  <div class="viz" id="viz7">
+    <div class="vhead"><span class="vt">Context-sensitivity</span><span class="vtag">call-site cloning</span>
+      <span class="seg" role="group" aria-label="context mode" style="margin-left:auto">
+        <button data-ctx="insens" aria-pressed="true">context-INsensitive</button>
+        <button data-ctx="sens" aria-pressed="false">context-Sensitive</button>
+      </span>
+    </div>
+    <div class="codeblock" style="margin:0;border:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:0">
+      <div class="code" id="v7code">
+        <div class="cl"><span class="ln">1</span><span class="fn2">id</span>(<span class="pt">q</span>) { <span class="k">return</span> <span class="pt">q</span>; }   <span class="c">// identity</span></div>
+        <div class="cl"><span class="ln">2</span><span class="pt">a</span> = <span class="fn2">id</span>(&amp;<span class="ad">x</span>);          <span class="c">// call site 1</span></div>
+        <div class="cl"><span class="ln">3</span><span class="pt">b</span> = <span class="fn2">id</span>(&amp;<span class="ad">y</span>);          <span class="c">// call site 2</span></div>
+      </div>
+    </div>
+    <div class="vbody"><svg id="v7svg" viewBox="0 0 700 250" role="img" aria-label="context demo"></svg></div>
+    <div class="cap" data-cap></div>
+  </div>
+
+  <div class="callout">
+    <h3 style="margin-top:0">Field &amp; heap, briefly</h3>
+    <p style="margin-bottom:6px"><strong>Field-sensitivity</strong> — field-insensitive treats <code class="inl">o.f</code> and <code class="inl">o.g</code> as one location (so <code class="inl">p=o.f</code> ⇒ pts(p)={x,y}); field-sensitive keeps them distinct (pts(p)={x}).</p>
+    <p style="margin-bottom:0"><strong>Heap modeling</strong> — the heap is unbounded, so objects are named by <strong>allocation site</strong>: every object from one <code class="inl">new</code> shares one abstract name. That merges all objects from a factory into one node; <em>heap cloning</em> (alloc-site + context) separates them.</p>
+  </div>
+</section>
+
+<!-- SECTION 3 -->
+<section class="lesson" id="s3">
+  <div class="secnum">§ 03 — the canonical tradeoff</div>
+  <h2>Andersen vs Steensgaard</h2>
+  <p>Both are flow-insensitive, whole-program analyses that reduce the program to four constraint forms, then solve. They differ only in the <strong>solving discipline</strong>: Andersen uses directional <em>inclusion</em> (subset) constraints; Steensgaard uses symmetric <em>unification</em> (equality), merging nodes with union-find.</p>
+
+  <h3>The four constraint forms</h3>
+  <table class="gt">
+    <tr><th>Stmt</th><th>Name</th><th>Constraint</th></tr>
+    <tr><td><code>a = &amp;b</code></td><td>address-of</td><td><code>{b} ⊆ pts(a)</code></td></tr>
+    <tr><td><code>a = b</code></td><td>copy</td><td><code>pts(b) ⊆ pts(a)</code></td></tr>
+    <tr><td><code>a = *b</code></td><td>load</td><td><code>∀o∈pts(b): pts(o) ⊆ pts(a)</code></td></tr>
+    <tr><td><code>*a = b</code></td><td>store</td><td><code>∀o∈pts(a): pts(b) ⊆ pts(o)</code></td></tr>
+  </table>
+  <p>The load/store forms are <em>dynamic</em>: new points-to facts create new copy edges, so the solver iterates to a fixpoint. Step each constraint form below to see its dereference hops.</p>
+
+  <div class="viz" id="viz5">
+    <div class="vhead"><span class="vt">The four constraint forms</span><span class="vtag">dereference hops</span>
+      <span class="seg" role="group" aria-label="constraint" style="margin-left:auto">
+        <button data-form="addr" aria-pressed="true">a=&amp;b</button>
+        <button data-form="copy" aria-pressed="false">a=b</button>
+        <button data-form="load" aria-pressed="false">a=*b</button>
+        <button data-form="store" aria-pressed="false">*a=b</button>
+      </span>
+    </div>
+    <div class="vbody"><svg id="v5svg" viewBox="0 0 700 230" role="img" aria-label="constraint form"></svg></div>
+    <div class="cap" data-cap></div>
+  </div>
+
+  <h3>Side-by-side: inclusion vs unification on five statements</h3>
+  <p>Step both engines in lockstep. <span style="color:var(--ptr)">Andersen (left)</span> keeps directionality — <code class="inl">q</code> never receives anything, so pts(q) stays {b}. <span style="color:var(--alias)">Steensgaard (right)</span> unifies on each copy: step 3 merges {p,q}, step 5 merges {p,q,r} into one node that points to {a,b,c} — so <code class="inl">q</code> spuriously gains a and c.</p>
+
+  <div class="viz" id="viz4">
+    <div class="vhead"><span class="vt">Andersen vs Steensgaard — lockstep stepper</span><span class="vtag">the centerpiece</span></div>
+    <div class="codeblock" style="margin:0;border:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:0">
+      <div class="code" id="v4code">
+        <div class="cl" data-l="0"><span class="ln">1</span><span class="pt">p</span> = &amp;<span class="ad">a</span>;   <span class="c">// {a} ⊆ pts(p)</span></div>
+        <div class="cl" data-l="1"><span class="ln">2</span><span class="pt">q</span> = &amp;<span class="ad">b</span>;   <span class="c">// {b} ⊆ pts(q)</span></div>
+        <div class="cl" data-l="2"><span class="ln">3</span><span class="pt">p</span> = <span class="pt">q</span>;    <span class="c">// pts(q) ⊆ pts(p)   [copy, ONE-WAY]</span></div>
+        <div class="cl" data-l="3"><span class="ln">4</span><span class="pt">r</span> = &amp;<span class="ad">c</span>;   <span class="c">// {c} ⊆ pts(r)</span></div>
+        <div class="cl" data-l="4"><span class="ln">5</span><span class="pt">r</span> = <span class="pt">p</span>;    <span class="c">// pts(p) ⊆ pts(r)   [copy]</span></div>
+      </div>
+    </div>
+    <div class="two">
+      <div><div class="pane-h A">Andersen · inclusion · O(n³)</div><svg id="v4a" viewBox="0 0 340 250" role="img" aria-label="Andersen"></svg></div>
+      <div class="divider" style="grid-row:1;grid-column:auto"></div>
+      <div><div class="pane-h S">Steensgaard · unification · O(n·α(n))</div><svg id="v4s" viewBox="0 0 340 250" role="img" aria-label="Steensgaard"></svg></div>
+    </div>
+    <div class="controls">
+      <button class="btn primary" data-act="play">▶ Play</button>
+      <button class="btn" data-act="step">Step ▸</button>
+      <button class="btn" data-act="reset">⟲ Reset</button>
+      <span class="step-ind" data-ind>step 0 / 5</span>
+    </div>
+    <div class="cap" data-cap></div>
+  </div>
+
+  <div class="note"><strong>Takeaway.</strong> Andersen distinguishes pts(q)={b} from pts(p)={a,b}; Steensgaard collapses both to {a,b,c}. Same soundness (both over-approximate), wildly different precision and cost. Steensgaard when you need whole-program points-to in near-linear time; Andersen when precision matters and n is moderate.</div>
+</section>
+
+<!-- SECTION 4 -->
+<section class="lesson" id="s4">
+  <div class="secnum">§ 04 — dragon book framing</div>
+  <h2>Flow-insensitive Datalog + call-string contexts</h2>
+  <p>The Dragon Book (12.4) frames pointer analysis as a flow-insensitive, inclusion-based <strong>Datalog</strong> program with two IDB relations: <code class="inl">pts(V,H)</code> (variable V may point to heap object H) and <code class="inl">hpts(H,F,G)</code> (field F of object H points to G — field-sensitive). The four rules, one per statement form, are the Datalog encoding of the inclusion constraints, solved by iterative evaluation.</p>
+  <p><strong>Interprocedural, context-insensitive (12.5):</strong> model parameter passing and returns as copy statements, and discover the call graph <em>on the fly</em> — because you need points-to to compute call targets, but you need call targets to compute points-to. This mutual dependence is iterated to a joint fixpoint.</p>
+  <p><strong>Context-sensitive (12.6):</strong> a context is a <strong>call string</strong> — the sequence of call-site locations on the stack. Recursion makes call strings infinite, so recursive SCCs are collapsed. Each method is cloned per context; with ~10¹⁴ contexts in real programs, results are stored as BDDs.</p>
+</section>
+
+<!-- SECTION 5 -->
+<section class="lesson" id="s5">
+  <div class="secnum">§ 05 — why it's hard</div>
+  <h2>The interview thread</h2>
+  <p>This is the perennial follow-up. Four pillars:</p>
+  <table class="gt">
+    <tr><th>Pillar</th><th>The hard part</th></tr>
+    <tr><td>Undecidability</td><td>Precise may-alias with dynamic allocation and ≥2 dereference levels is <strong>undecidable</strong> (Landi 1992; Ramalingam 1994). Any sound analysis must over-approximate — there is no perfect answer, only a soundness/precision/cost frontier.</td></tr>
+    <tr><td>Call-graph ↔ points-to</td><td>You need points-to to resolve indirect/virtual calls, but the call graph to propagate points-to. Neither comes first; solve <strong>jointly to a fixpoint</strong>.</td></tr>
+    <tr><td>Heap / arrays / recursion</td><td>Arrays summarized to one element ⇒ <code>a[i]</code>/<code>a[j]</code> always may-alias unless a separate dependence test proves otherwise. Recursive structures defeat alloc-site naming.</td></tr>
+    <tr><td>Scalability wall</td><td>The product of all four axes is exponential. In practice, production analyses <strong>drop flow-sensitivity first</strong> (Andersen/Steensgaard are flow-insensitive).</td></tr>
+  </table>
+  <p class="muted">The one-liner: aliasing is hard because precise answers are undecidable, the analysis is mutually recursive with the call graph, the heap/arrays/recursion force lossy abstraction, and the precision axes multiply — so every real analysis is a deliberate point on a soundness/precision/cost surface.</p>
+</section>
+
+<!-- SECTION 6 -->
+<section class="lesson" id="s6">
+  <div class="secnum">§ 06 — in practice</div>
+  <h2>LLVM AliasAnalysis, TBAA, strict aliasing</h2>
+  <p><strong>LLVM <code class="inl">AAResults</code>.</strong> The core query <code class="inl">alias(LocA, LocB)</code> returns one of <span class="tag no">NoAlias</span> <span class="tag may">MayAlias</span> <code class="inl">PartialAlias</code> <span class="tag must">MustAlias</span>. Implementations are chained in an AA pipeline: <code class="inl">basic-aa</code>, CFL-AA, <code class="inl">globals-aa</code>, <code class="inl">scev-aa</code>, and TBAA. Consumers — GVN, LICM, DSE, the loop vectorizer — all gate on these results.</p>
+  <p><strong>TBAA (type-based).</strong> Uses the source language's type rules: in C/C++ an access of type <code class="inl">T1</code> can't alias one of incompatible <code class="inl">T2</code> (modulo the <code class="inl">char*</code> escape hatch). Encoded as <code class="inl">!tbaa</code> metadata — it proves <code class="inl">float*</code> and <code class="inl">int*</code> NoAlias <em>without</em> a points-to analysis.</p>
+  <p><strong>Strict-aliasing UB.</strong> The standard makes it UB to access an object through an incompatible-type lvalue, so the compiler may <em>assume</em> type-incompatible pointers never alias — sound only because violating it is UB. Type-punning through a <code class="inl">float*</code> may be legally miscompiled. Mitigations: <code class="inl">-fno-strict-aliasing</code>, <code class="inl">memcpy</code>, <code class="inl">char*</code>/<code class="inl">std::byte</code>. The <code class="inl">restrict</code> qualifier is a programmer NoAlias assertion that enables vectorization on CPU and GPU.</p>
+</section>
+
+</div>
+
+<!-- ============ EXAMPLES PANEL ============ -->
+<div id="panel-examples" class="tabpanel" role="tabpanel" aria-labelledby="tab-examples" hidden>
+
+  <div class="hero" style="padding-bottom:18px">
+    <p class="eyebrow">three worked traces · diagnose depth</p>
+    <h1>Run the <span class="glow">examples</span></h1>
+    <p class="lede">Each example pairs its exact code with a stepped visualization and a short read of what it shows. Use Play / Step / Reset, or the toggles.</p>
+  </div>
+
+  <!-- EXAMPLE 1 -->
+  <section class="lesson">
+    <div class="secnum">example 01</div>
+    <h2>Andersen vs Steensgaard on the same code</h2>
+    <p>The single statement <code class="inl">a = b</code> is what diverges them: Andersen makes pts(a) a superset of pts(b) (one-way); Steensgaard makes them equal, so the later <code class="inl">c = a</code> drags <code class="inl">b</code> into {x,y,z}.</p>
+
+    <div class="viz" id="ex1">
+      <div class="vhead"><span class="vt">Inclusion vs unification — lockstep</span><span class="vtag">5 statements</span></div>
+      <div class="codeblock" style="margin:0;border:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:0">
+        <div class="code" id="ex1code">
+          <div class="cl" data-l="0"><span class="ln">1</span><span class="pt">a</span> = &amp;<span class="ad">x</span>;   <span class="c">// address-of</span></div>
+          <div class="cl" data-l="1"><span class="ln">2</span><span class="pt">b</span> = &amp;<span class="ad">y</span>;   <span class="c">// address-of</span></div>
+          <div class="cl" data-l="2"><span class="ln">3</span><span class="pt">a</span> = <span class="pt">b</span>;    <span class="c">// copy  [pts(b) ⊆ pts(a)]</span></div>
+          <div class="cl" data-l="3"><span class="ln">4</span><span class="pt">c</span> = <span class="pt">a</span>;    <span class="c">// copy  [pts(a) ⊆ pts(c)]</span></div>
+          <div class="cl" data-l="4"><span class="ln">5</span><span class="pt">c</span> = &amp;<span class="ad">z</span>;   <span class="c">// address-of</span></div>
+        </div>
+      </div>
+      <div class="two">
+        <div><div class="pane-h A">Andersen · inclusion</div><svg id="ex1a" viewBox="0 0 340 250" role="img" aria-label="Andersen ex1"></svg></div>
+        <div class="divider"></div>
+        <div><div class="pane-h S">Steensgaard · unification</div><svg id="ex1s" viewBox="0 0 340 250" role="img" aria-label="Steensgaard ex1"></svg></div>
+      </div>
+      <div class="controls">
+        <button class="btn primary" data-act="play">▶ Play</button>
+        <button class="btn" data-act="step">Step ▸</button>
+        <button class="btn" data-act="reset">⟲ Reset</button>
+        <span class="step-ind" data-ind>step 0 / 5</span>
+      </div>
+      <div class="cap" data-cap></div>
+    </div>
+    <p class="muted"><b>What this shows.</b> Final Andersen: pts(a)={x,y}, pts(b)={y}, pts(c)={x,y,z} — b never aliases x or z. Steensgaard collapses all three to {x,y,z}: b spuriously aliases x and z. Three spurious facts come purely from unification's symmetry.</p>
+  </section>
+
+  <!-- EXAMPLE 2 -->
+  <section class="lesson">
+    <div class="secnum">example 02</div>
+    <h2>Flow-sensitivity enables dead-store elimination</h2>
+    <p>Is the store at line 2 dead? In this variant line 5 reads <code class="inl">h</code>, so the value written to <code class="inl">g</code> at line 2 is never read — but only a flow-sensitive analysis can prove it, because it separates the g-write from the h-write with a kill.</p>
+
+    <div class="viz" id="ex2">
+      <div class="vhead"><span class="vt">Dead-store elimination via strong update</span><span class="vtag">gen / kill</span>
+        <span class="seg" role="group" aria-label="flow mode" style="margin-left:auto">
+          <button data-flow="insens" aria-pressed="true">flow-INsensitive</button>
+          <button data-flow="sens" aria-pressed="false">flow-Sensitive</button>
+        </span>
+      </div>
+      <div class="codeblock" style="margin:0;border:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:0">
+        <div class="code" id="ex2code">
+          <div class="cl" data-l="0"><span class="ln">1</span><span class="pt">p</span> = &amp;<span class="ad">g</span>;</div>
+          <div class="cl" data-l="1"><span class="ln">2</span>*<span class="pt">p</span> = <span class="n">1</span>;        <span class="c">// store — dead?</span></div>
+          <div class="cl" data-l="2"><span class="ln">3</span><span class="pt">p</span> = &amp;<span class="ad">h</span>;       <span class="c">// flow-sens: KILLS p→g</span></div>
+          <div class="cl" data-l="3"><span class="ln">4</span>*<span class="pt">p</span> = <span class="n">2</span>;        <span class="c">// store</span></div>
+          <div class="cl" data-l="4"><span class="ln">5</span><span class="pt">y</span> = <span class="ad">h</span>;        <span class="c">// reads h only</span></div>
+        </div>
+      </div>
+      <div class="vbody"><svg id="ex2svg" viewBox="0 0 700 250" role="img" aria-label="DSE demo"></svg></div>
+      <div class="controls">
+        <button class="btn primary" data-act="play">▶ Play</button>
+        <button class="btn" data-act="step">Step ▸</button>
+        <button class="btn" data-act="reset">⟲ Reset</button>
+        <span class="step-ind" data-ind>step 0 / 5</span>
+      </div>
+      <div class="cap" data-cap></div>
+    </div>
+    <p class="muted"><b>What this shows.</b> Flow-insensitive: pts(p)={g,h}, no kill — it can't prove line 2 dead. Flow-sensitive: line 3 kills p→g, so line 2 writes g, line 4 writes h, and line 5 reads only h ⇒ line 2's write to g is never read ⇒ <b>dead, eliminate it</b>. A strong update (kill) is sound only when the pointer must point to exactly one object.</p>
+  </section>
+
+  <!-- EXAMPLE 3 -->
+  <section class="lesson">
+    <div class="secnum">example 03</div>
+    <h2>Aliasing blocks LICM</h2>
+    <p>We want to hoist the loop-invariant load <code class="inl">t = *p</code> to the preheader, so we load once instead of n times. Legality hinges entirely on <code class="inl">alias(p, q)</code>. Toggle it.</p>
+
+    <div class="viz" id="ex3">
+      <div class="vhead"><span class="vt">Hoist a load out of a loop</span><span class="vtag">LICM</span>
+        <span class="seg" role="group" aria-label="alias result" style="margin-left:auto">
+          <button data-aa="noalias" aria-pressed="true">p NoAlias q</button>
+          <button data-aa="may" aria-pressed="false">p MayAlias q</button>
+        </span>
+      </div>
+      <div class="vbody"><svg id="ex3svg" viewBox="0 0 700 270" role="img" aria-label="LICM demo"></svg></div>
+      <div class="controls">
+        <button class="btn primary" data-act="play">▶ Play</button>
+        <button class="btn" data-act="step">Step ▸</button>
+        <button class="btn" data-act="reset">⟲ Reset</button>
+        <span class="step-ind" data-ind>step 0 / 3</span>
+      </div>
+      <div class="cap" data-cap></div>
+    </div>
+    <p class="muted"><b>What this shows.</b> If <code class="inl">p NoAlias q</code>, the store <code class="inl">*q=i</code> can't change <code class="inl">*p</code> ⇒ the load is loop-invariant ⇒ hoist is legal (n loads → 1). If <code class="inl">p MayAlias q</code>, the store may clobber <code class="inl">*p</code> each iteration ⇒ not invariant ⇒ hoist illegal, reload every iteration. Real compilers get the NoAlias from distinct objects, TBAA types, or <code class="inl">restrict</code>.</p>
+  </section>
+
+  <p class="foot wrap" style="padding-left:0;padding-right:0">Pointer &amp; alias analysis · diagnose depth · the analysis that gates every memory optimization.</p>
+</div>
+
+<!-- ============ QUIZ PANEL ============ -->
+<div id="panel-quiz" class="tabpanel" role="tabpanel" aria-labelledby="tab-quiz" hidden>
+
+  <div class="hero" style="padding-bottom:14px">
+    <p class="eyebrow">self-check · scored multiple-choice + interview-style deep dives</p>
+    <h1>Test the <span class="glow">model</span> in your head</h1>
+    <p class="lede">Multiple-choice questions are scored instantly (first attempt counts); free-response questions reveal a model answer and grading notes when you're ready.</p>
+  </div>
+
+  <section class="lesson" style="border-bottom:0">
+    <div class="scorebar" role="status" aria-live="polite">
+      <span class="score">Score: <b id="scoreNum">0</b> / <span id="scoreDen">8</span> correct</span>
+      <span class="scoresub" id="scoreSub">answer the multiple-choice questions</span>
+      <span class="barwrap" aria-hidden="true"><span class="barfill" id="scoreBar"></span></span>
+      <button class="btn" id="resetQuiz" type="button">⟲ Reset quiz</button>
+    </div>
+
+    <div class="qgrouphead">Multiple choice — scored instantly</div>
+    <div id="mcqHost"></div>
+
+    <div class="qgrouphead">Interview-style deep dives — reveal model answers</div>
+    <div id="frHost"></div>
+  </section>
+
+</div>
+
+<!-- ============ INTERVIEW PANEL ============ -->
+<div id="panel-interview" class="tabpanel" role="tabpanel" aria-labelledby="tab-interview" hidden>
+
+  <div class="hero" style="padding-bottom:14px">
+    <p class="eyebrow">rehearsal · the conversation, not the answer key</p>
+    <h1>Sit the <span class="glow">interview</span></h1>
+    <p class="lede">The Quiz tab checks whether you know the facts. This tab rehearses the interview itself.</p>
+  </div>
+
+  <section class="lesson" style="border-bottom:0">
+    <div class="iv-intro">
+      Each prompt is phrased the way an interviewer actually <strong>says it out loud</strong> — followed by the
+      <strong>probes</strong> they use to push past a tidy surface answer, and a note on <strong>what they're really testing</strong>
+      and which shallow answers fail. These cards aren't scored. The point is to <strong>answer out loud first</strong>, hit the
+      probes, and only then reveal what a strong candidate covers.
+    </div>
+    <div class="iv-bar">
+      <span class="lbl">Six prompts · debug · design · defend a tradeoff · first principles · implementation · practice</span>
+      <button class="btn" id="ivExpandAll" type="button" style="margin-left:auto">Expand all answers</button>
+    </div>
+    <div id="ivHost"></div>
+  </section>
+
+</div>
+
+<p class="foot">Built as a memory/dataflow debugger. Colors encode meaning — see the legend up top. <span class="kbdhint">All semantics traced from the lesson.</span></p>
+
+</main>
+
+<script>
+"use strict";
+const RM = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SVGNS="http://www.w3.org/2000/svg";
+function el(tag,attrs,parent){const e=document.createElementNS(SVGNS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;}
+function clear(svg){while(svg.firstChild)svg.removeChild(svg.firstChild);}
+function defs(svg,color){const d=el("defs",{},svg);const m=el("marker",{id:"arrow_"+color.replace(/[^a-z]/gi,''),markerWidth:9,markerHeight:9,refX:7.5,refY:3,orient:"auto",markerUnits:"strokeWidth"},d);el("path",{d:"M0,0 L8,3 L0,6 z",fill:color},m);return "arrow_"+color.replace(/[^a-z]/gi,'');}
+
+/* generic cell + edge drawing */
+function cell(svg,x,y,w,h,label,kind){
+  const g=el("g",{class:"fadein"},svg);
+  el("rect",{x,y,width:w,height:h,rx:10,fill:kind==='obj'?'rgba(255,180,84,.12)':'rgba(91,200,255,.07)',
+    stroke:kind==='obj'?'var(--obj)':'var(--ptr)','stroke-width':1.6},g);
+  const t=el("text",{x:x+w/2,y:y+h/2+5,'text-anchor':"middle",class:"celllabel",
+    fill:kind==='obj'?'#ffd9a6':'#dff1ff'},g);t.textContent=label;
+  return {g,cx:x+w/2,cy:y+h/2,x,y,w,h};
+}
+function arrow(svg,a,b,opt){
+  opt=opt||{};
+  const color=opt.color||'var(--ptr)';
+  const mk=opt.marker;
+  // edge from right of a to left of b (or curved)
+  let x1=a.x+a.w, y1=a.cy, x2=b.x, y2=b.cy;
+  if(b.x < a.x){x1=a.x; x2=b.x+b.w;}
+  if(opt.fromCenter){x1=a.cx;y1=a.cy;}
+  const dx=(x2-x1)*0.5;
+  const path=el("path",{d:`M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`,
+    fill:"none",stroke:color,'stroke-width':opt.w||2.4,'marker-end':`url(#${mk})`,
+    class:(opt.cls||'')+(RM?'':' fadein')},svg);
+  if(opt.dash)path.setAttribute('stroke-dasharray',opt.dash);
+  if(opt.opacity)path.setAttribute('opacity',opt.opacity);
+  return path;
+}
+function setPanel(svg){const w=svg.viewBox.baseVal.width,h=svg.viewBox.baseVal.height;return {w,h};}
+
+/* ---------- TABS ---------- */
+const tabs=[document.getElementById('tab-lesson'),document.getElementById('tab-examples'),document.getElementById('tab-quiz'),document.getElementById('tab-interview')];
+const panels={lesson:document.getElementById('panel-lesson'),examples:document.getElementById('panel-examples'),quiz:document.getElementById('panel-quiz'),interview:document.getElementById('panel-interview')};
+function selectTab(name){
+  tabs.forEach(t=>t.setAttribute('aria-selected', t.id==='tab-'+name));
+  panels.lesson.hidden = name!=='lesson';
+  panels.examples.hidden = name!=='examples';
+  panels.quiz.hidden = name!=='quiz';
+  panels.interview.hidden = name!=='interview';
+  window.scrollTo({top:0,behavior:RM?'auto':'smooth'});
+}
+tabs.forEach(t=>{t.addEventListener('click',()=>selectTab(t.id.replace('tab-','')));});
+document.querySelector('.tabs').addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key==='ArrowLeft'){
+    const i=tabs.findIndex(t=>t.getAttribute('aria-selected')==='true');
+    const ni=(i+(e.key==='ArrowRight'?1:tabs.length-1))%tabs.length;
+    tabs[ni].focus();selectTab(tabs[ni].id.replace('tab-',''));e.preventDefault();
+  }
+});
+
+/* ---------- shared stepper controls ---------- */
+function wireControls(root, maxStep, render, label){
+  let step=0, timer=null;
+  const ind=root.querySelector('[data-ind]');
+  const setInd=()=>{if(ind)ind.textContent=`step ${step} / ${maxStep}`;};
+  function go(s){step=Math.max(0,Math.min(maxStep,s));render(step);setInd();}
+  root.querySelectorAll('[data-act]').forEach(b=>{
+    b.addEventListener('click',()=>{
+      const a=b.dataset.act;
+      if(a==='reset'){if(timer){clearInterval(timer);timer=null;}go(0);}
+      else if(a==='step'){if(timer){clearInterval(timer);timer=null;}go(step+1<=maxStep?step+1:0);}
+      else if(a==='play'){
+        if(timer){clearInterval(timer);timer=null;return;}
+        if(step>=maxStep)go(0);
+        if(RM){go(maxStep);return;}
+        timer=setInterval(()=>{if(step>=maxStep){clearInterval(timer);timer=null;return;}go(step+1);},1100);
+      }
+    });
+  });
+  render(0);setInd();
+  return {go:go, get:()=>step, reset:()=>go(0)};
+}
+function highlightLine(codeEl, idx){
+  if(!codeEl)return;
+  codeEl.querySelectorAll('.cl').forEach(c=>c.classList.remove('active'));
+  if(idx>=0){const t=codeEl.querySelector(`.cl[data-l="${idx}"]`);if(t)t.classList.add('active');}
+}
+function setNumbers(set){return '{'+set.join(', ')+'}';}
+
+/* =========================================================
+   VIZ 1 — points-to graph stepper  p=&a; q=&b; p=q;
+========================================================= */
+(function(){
+  const svg=document.getElementById('v1svg');
+  const code=document.getElementById('v1code');
+  const cap=document.querySelector('#viz1 [data-cap]');
+  const root=document.getElementById('viz1');
+  function render(step){
+    clear(svg);const mk=defs(svg,'#5BC8FF');
+    highlightLine(code, step===0?-1:step-1);
+    // layout: vars left column, objects right column
+    const p=cell(svg,60,40,90,46,'p','var');
+    const q=cell(svg,60,140,90,46,'q','var');
+    const a=cell(svg,420,40,90,46,'a','obj');
+    const b=cell(svg,420,140,90,46,'b','obj');
+    if(step>=1) arrow(svg,p,a,{marker:mk});
+    if(step>=2) arrow(svg,q,b,{marker:mk});
+    if(step>=3){ // p = q : p now also -> b
+      const pp=arrow(svg,p,b,{marker:mk,cls:'pulse'});
+    }
+    const caps=[
+      'Press <b>Step</b>. pts(p) and pts(q) build one edge per statement.',
+      '<b>Line 1</b> <code class="inl">p=&a</code> ⇒ {a}⊆pts(p). p points to a.',
+      '<b>Line 2</b> <code class="inl">q=&b</code> ⇒ {b}⊆pts(q). q points to b.',
+      '<b>Line 3</b> <code class="inl">p=q</code> copies pts(q) into pts(p). p gains an arrow to b ⇒ <b>pts(p) = {a, b}</b>. The copy is one-way: pts(q) stays {b}.'
+    ];
+    cap.innerHTML=caps[step];
+  }
+  wireControls(root,3,render);
+})();
+
+/* =========================================================
+   VIZ 2 — may vs must alias
+========================================================= */
+(function(){
+  const svg=document.getElementById('v2svg');
+  const cap=document.querySelector('#viz2 [data-cap]');
+  let mode='may';
+  function render(){
+    clear(svg);
+    // two buckets as rounded rects (sets), labelled objects inside
+    // may: pts(p)={a,b}, pts(q)={b,c}  intersect {b}
+    // must: pts(p)={a}, pts(q)={a}
+    const left=el("g",{},svg), right=el("g",{},svg);
+    function bucket(x,name,items,color){
+      el("rect",{x,y:50,width:200,height:150,rx:16,fill:'none',stroke:color,'stroke-width':1.6,'stroke-dasharray':'2 0'},svg);
+      const t=el("text",{x:x+100,y:40,'text-anchor':'middle','font-family':'var(--mono)','font-size':13,fill:color},svg);
+      t.textContent=`pts(${name})`;
+      return x;
+    }
+    if(mode==='may'){
+      bucket(70,'p',[],'var(--ptr)');
+      bucket(430,'q',[],'var(--alias)');
+      // objects: a (only p), b (shared, center), c (only q)
+      function obj(x,y,lab,shared){
+        const g=el("g",{class:'fadein'},svg);
+        el("circle",{cx:x,cy:y,r:26,fill:shared?'rgba(199,146,234,.22)':'rgba(255,180,84,.12)',
+          stroke:shared?'var(--alias)':'var(--obj)','stroke-width':shared?2.4:1.6},g);
+        const t=el("text",{x,y:y+5,'text-anchor':'middle',class:'celllabel',fill:shared?'#e7d4f7':'#ffd9a6'},g);t.textContent=lab;
+        if(shared)g.setAttribute('class','fadein pulse');
+      }
+      obj(120,125,'a',false);
+      obj(355,125,'b',true);   // shared, sits between buckets
+      obj(530,125,'c',false);
+      // bridge lines into shared object
+      el("line",{x1:270,y1:125,x2:329,y2:125,stroke:'var(--alias)','stroke-width':1.5,'stroke-dasharray':'4 3'},svg);
+      el("line",{x1:381,y1:125,x2:430,y2:125,stroke:'var(--alias)','stroke-width':1.5,'stroke-dasharray':'4 3'},svg);
+      const lab=el("text",{x:355,y:225,'text-anchor':'middle','font-family':'var(--mono)','font-size':12,fill:'var(--alias)'},svg);
+      lab.textContent='∩ = {b}  →  MAY-ALIAS';
+      cap.className='cap';
+      cap.innerHTML='<b>May-alias:</b> pts(p)={a,b}, pts(q)={b,c} share <b style="color:var(--alias)">b</b> ⇒ the pair <b>may</b> refer to the same cell. The optimizer must <b>forbid</b> reordering the two references — a "yes" here is conservative (could be a false positive).';
+    } else {
+      bucket(70,'p',[],'var(--ptr)');
+      bucket(430,'q',[],'var(--ok)');
+      function obj(x,lab,c){
+        const g=el("g",{class:'fadein pulse'},svg);
+        el("circle",{cx:x,cy:125,r:28,fill:'rgba(74,222,158,.16)',stroke:'var(--ok)','stroke-width':2.4},g);
+        const t=el("text",{x,y:130,'text-anchor':'middle',class:'celllabel',fill:'#cdf6e3'},g);t.textContent=lab;
+      }
+      // both singletons, SAME object — draw one object in middle, both buckets point to it
+      el("circle",{cx:355,cy:125,r:30,fill:'rgba(74,222,158,.16)',stroke:'var(--ok)','stroke-width':2.6,class:'fadein pulse'},svg);
+      const t=el("text",{x:355,y:131,'text-anchor':'middle',class:'celllabel',fill:'#cdf6e3'},svg);t.textContent='a';
+      el("line",{x1:270,y1:125,x2:325,y2:125,stroke:'var(--ok)','stroke-width':1.8},svg);
+      el("line",{x1:385,y1:125,x2:430,y2:125,stroke:'var(--ok)','stroke-width':1.8},svg);
+      const lab=el("text",{x:355,y:225,'text-anchor':'middle','font-family':'var(--mono)','font-size':12,fill:'var(--ok)'},svg);
+      lab.textContent='pts(p)=pts(q)={a}  →  MUST-ALIAS';
+      cap.className='cap good';
+      cap.innerHTML='<b>Must-alias:</b> both points-to sets are the singleton {a} — the pair refers to the same cell on <b>every</b> execution. This is a guarantee, so the optimizer may <b>forward</b> a value stored through p into a later load through q.';
+    }
+  }
+  document.querySelectorAll('#viz2 [data-mode]').forEach(b=>{
+    b.addEventListener('click',()=>{
+      mode=b.dataset.mode;
+      document.querySelectorAll('#viz2 [data-mode]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+      render();
+    });
+  });
+  render();
+})();
+
+/* =========================================================
+   VIZ 3 — the miscompile demo
+========================================================= */
+(function(){
+  const svg=document.getElementById('v3svg');
+  const code=document.getElementById('v3code');
+  const cap=document.querySelector('#viz3 [data-cap]');
+  const root=document.getElementById('viz3');
+  let assume='noalias', rt='ne';
+  let stepRef=null;
+  // steps: 0 init, 1 S1 store1, 2 S2 store7, 3 L2 load/forward
+  function render(step){
+    clear(svg);const mk=defs(svg,'#5BC8FF');
+    highlightLine(code, step===0?-1:step-1);
+    const same = rt==='eq';
+    // draw two pointers p,q on left, memory cells on right
+    const p=cell(svg,50,40,80,42,'p','var');
+    const q=cell(svg,50,160,80,42,'q','var');
+    // memory cells. if same: one cell M. if diff: cellP and cellQ
+    let cellP,cellQ;
+    if(same){
+      cellP=cell(svg,360,100,150,46,'',(step>=2&&!(assume==='noalias'&&step>=3))?'obj':'obj');
+      cellQ=cellP;
+      const lab=el("text",{x:435,y:90,'text-anchor':'middle','font-family':'var(--mono)','font-size':11,fill:'var(--faint)'},svg);
+      lab.textContent='*p and *q : SAME cell';
+    } else {
+      cellP=cell(svg,360,40,150,46,'','obj');
+      cellQ=cell(svg,360,150,150,46,'','obj');
+      el("text",{x:435,y:30,'text-anchor':'middle','font-family':'var(--mono)','font-size':11,fill:'var(--faint)'},svg).textContent='cell *p';
+      el("text",{x:435,y:215,'text-anchor':'middle','font-family':'var(--mono)','font-size':11,fill:'var(--faint)'},svg).textContent='cell *q';
+    }
+    // pointer edges
+    arrow(svg,p,cellP,{marker:mk,opacity:.85});
+    arrow(svg,q,cellQ,{marker:mk,opacity:.85,color:'var(--alias)'});
+    // recompute marker for alias color
+    const mkA=defs(svg,'#C792EA');
+    // values written
+    let valP=null, valQ=null;
+    if(step>=1)valP=1;
+    if(step>=2)valQ=7;
+    // memory true value:
+    function cellVal(c,v,danger){
+      if(v===null)return;
+      const tx=el("text",{x:c.cx,y:c.cy+6,'text-anchor':'middle','font-family':'var(--mono)','font-size':18,'font-weight':700,
+        fill:danger?'var(--danger)':'#ffe0b5'},svg);tx.textContent=v;
+    }
+    // For same cell, the live value is the last store
+    let liveP = same ? (step>=2?7:(step>=1?1:null)) : (step>=1?1:null);
+    let liveQ = same ? liveP : (step>=2?7:null);
+    cellVal(cellP,liveP,false);
+    if(!same)cellVal(cellQ,liveQ,false);
+
+    // L2 result
+    let zval=null, miscompile=false;
+    if(step>=3){
+      if(assume==='noalias'){
+        // optimizer forwards z = 1 (the value stored to *p at S1), ignoring S2
+        zval=1;
+        if(same && liveP===7){ miscompile=true; }
+      } else {
+        // sound: z = load *p = true memory
+        zval = same ? liveP : 1; // if diff, *p still holds 1
+      }
+      // z box
+      const zb=cell(svg,560,100,110,46,'','var');
+      const zt=el("text",{x:615,y:90,'text-anchor':'middle','font-family':'var(--mono)','font-size':11,fill:'var(--faint)'},svg);
+      zt.textContent='z = load *p';
+      const zv=el("text",{x:615,y:130,'text-anchor':'middle','font-family':'var(--mono)','font-size':20,'font-weight':700,
+        fill:miscompile?'var(--danger)':'var(--ok)'},svg);
+      zv.textContent='z = '+zval;
+      // arrow from cellP to z
+      arrow(svg,cellP,zb,{marker:defs(svg,miscompile?'#FF5C72':'#4ADE9E'),color:miscompile?'var(--danger)':'var(--ok)',
+        dash:assume==='noalias'?'5 4':null,cls:miscompile&&!RM?'glitch':''});
+      if(miscompile){
+        // danger banner
+        const g=el("g",{class:RM?'':'glitch'},svg);
+        el("rect",{x:360,y:100,width:150,height:46,rx:10,fill:'none',stroke:'var(--danger)','stroke-width':2.6},g);
+        const warn=el("text",{x:350,y:240,'text-anchor':'middle','font-family':'var(--mono)','font-size':13,'font-weight':700,fill:'var(--danger)'},svg);
+        warn.textContent='⚠ MISCOMPILE: z=1 but memory=7';
+      }
+    }
+    // captions
+    const caps=[
+      'Set the assumption and runtime relation, then <b>Run</b>.',
+      '<b>S1</b> stores 1 through p.',
+      '<b>S2</b> stores 7 through q.' + (same?' Same cell as *p — it now holds 7.':' A different cell.'),
+      ''
+    ];
+    if(step<3){cap.className='cap';cap.innerHTML=caps[step];}
+    else{
+      if(miscompile){
+        cap.className='cap warn';
+        cap.innerHTML='<b>MISCOMPILE.</b> The optimizer assumed <code class="inl">NoAlias(p,q)</code>, so it forwarded S1\'s value: <b>z = 1</b>. But at runtime p == q, so S2 overwrote the slot — true memory is <b>7</b>. An over-optimistic NoAlias is a miscompile. This is why may-alias must be sound.';
+      } else if(assume==='noalias' && !same){
+        cap.className='cap';
+        cap.innerHTML='Forwarding <b>z = 1</b> is correct <i>here</i> because p ≠ q at runtime — S2 wrote a different cell. But the analysis got lucky: NoAlias is unsound, and the <b>p == q</b> runtime case (toggle it) exposes the bug.';
+      } else {
+        cap.className='cap good';
+        cap.innerHTML='<b>Sound path.</b> MayAlias forbids forwarding past S2, so L2 actually loads memory ⇒ <b>z = '+zval+'</b>, matching the true contents. Correct regardless of whether p == q. Sound but possibly less optimized — the right tradeoff.';
+      }
+    }
+  }
+  stepRef=wireControls(root,3,render);
+  document.querySelectorAll('#viz3 [data-assume]').forEach(b=>b.addEventListener('click',()=>{
+    assume=b.dataset.assume;
+    document.querySelectorAll('#viz3 [data-assume]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+    stepRef.go(stepRef.get());
+  }));
+  document.querySelectorAll('#viz3 [data-rt]').forEach(b=>b.addEventListener('click',()=>{
+    rt=b.dataset.rt;
+    document.querySelectorAll('#viz3 [data-rt]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+    stepRef.go(stepRef.get());
+  }));
+})();
+
+/* =========================================================
+   VIZ 4 / EX1 — Andersen vs Steensgaard lockstep
+   generic builder parameterized by the program
+========================================================= */
+function buildAndersenSteensgaard(cfg){
+  // cfg: {svgA, svgS, code, cap, root, max, stmts, captions, finalCap}
+  // stmts: list describing each step's action for rendering
+  const svgA=document.getElementById(cfg.svgA), svgS=document.getElementById(cfg.svgS);
+  const code=document.getElementById(cfg.code), cap=document.querySelector(cfg.cap), root=document.getElementById(cfg.root);
+
+  // ---- Andersen state machine (compute pts at each step) ----
+  function anders(step){
+    // returns map var->set, applying constraints in order, with fixpoint up to current step
+    const pts={};
+    cfg.vars.forEach(v=>pts[v]=new Set());
+    const applied=cfg.stmts.slice(0,step);
+    // iterate to fixpoint over applied stmts (copy constraints re-propagate)
+    let changed=true, guard=0;
+    while(changed && guard<50){changed=false;guard++;
+      applied.forEach(s=>{
+        if(s.op==='addr'){ if(!pts[s.d].has(s.t)){pts[s.d].add(s.t);changed=true;} }
+        else if(s.op==='copy'){ pts[s.s].forEach(o=>{if(!pts[s.d].has(o)){pts[s.d].add(o);changed=true;}}); }
+      });
+    }
+    return pts;
+  }
+  // ---- Steensgaard state machine (union-find) ----
+  function steens(step){
+    const parent={}; cfg.vars.forEach(v=>parent[v]=v);
+    function find(x){while(parent[x]!==x){parent[x]=parent[parent[x]];x=parent[x];}return x;}
+    const classPts={}; cfg.vars.forEach(v=>classPts[v]=new Set());
+    function ptsOf(x){return classPts[find(x)];}
+    function union(a,b){
+      a=find(a);b=find(b);if(a===b)return;
+      parent[b]=a;
+      const merged=new Set([...classPts[a],...classPts[b]]);
+      classPts[a]=merged;
+    }
+    const applied=cfg.stmts.slice(0,step);
+    applied.forEach(s=>{
+      if(s.op==='addr'){ ptsOf(s.d).add(s.t); }
+      else if(s.op==='copy'){ union(s.d,s.s); }
+    });
+    // build classes
+    const classes={};
+    cfg.vars.forEach(v=>{const r=find(v);(classes[r]=classes[r]||[]).push(v);});
+    return {find,ptsOf,classes,parent};
+  }
+
+  function drawAnders(step){
+    clear(svgA);const mk=defs(svgA,'#5BC8FF');
+    const pts=anders(step);
+    // layout: vars in left column, objects right column
+    const vy={}, oy={};
+    cfg.vars.forEach((v,i)=>vy[v]=40+i*64);
+    cfg.objs.forEach((o,i)=>oy[o]=40+i*52);
+    const vc={}, oc={};
+    cfg.vars.forEach(v=>vc[v]=cell(svgA,24,vy[v],70,40,v,'var'));
+    cfg.objs.forEach(o=>oc[o]=cell(svgA,250,oy[o],62,38,o,'obj'));
+    cfg.vars.forEach(v=>{pts[v].forEach(o=>{
+      arrow(svgA,vc[v],oc[o],{marker:mk,w:2.2,opacity:.92});
+    });});
+    return pts;
+  }
+  function drawSteens(step){
+    clear(svgS);const mk=defs(svgS,'#C792EA');
+    const st=steens(step);
+    const oc={};
+    cfg.objs.forEach((o,i)=>oc[o]=cell(svgS,250,40+i*52,62,38,o,'obj'));
+    // draw each equivalence class as one node (merged box)
+    const classKeys=Object.keys(st.classes);
+    let ci=0; const classBox={};
+    classKeys.forEach(k=>{
+      const members=st.classes[k];
+      const y=40+ci*64; ci++;
+      // box sized to members
+      const label=members.join(',');
+      const w=Math.max(70, 26+label.length*9);
+      const merged=members.length>1;
+      const g=el("g",{class:RM?'':'fadein'},svgS);
+      el("rect",{x:24,y,width:w,height:40,rx:10,fill:merged?'rgba(199,146,234,.16)':'rgba(91,200,255,.07)',
+        stroke:merged?'var(--alias)':'var(--ptr)','stroke-width':merged?2.4:1.6,class:merged&&!RM?'pulse':''},g);
+      const t=el("text",{x:24+w/2,y:y+25,'text-anchor':'middle',class:'celllabel',
+        fill:merged?'#e7d4f7':'#dff1ff'},g);t.textContent='['+label+']';
+      classBox[k]={x:24,y,w,h:40,cx:24+w/2,cy:y+20};
+    });
+    // edges: each class -> objects in its pts
+    classKeys.forEach(k=>{
+      const set=st.ptsOf(st.classes[k][0]);
+      set.forEach(o=>{ arrow(svgS,classBox[k],oc[o],{marker:mk,w:2.2,color:'var(--alias)'}); });
+    });
+    return st;
+  }
+
+  function render(step){
+    highlightLine(code, step===0?-1:step-1);
+    const ptsA=drawAnders(step);
+    const st=drawSteens(step);
+    if(step>=cfg.max){
+      cap.className='cap';
+      cap.innerHTML=cfg.finalCap(ptsA,st);
+    } else {
+      cap.className='cap';
+      cap.innerHTML=cfg.captions[step];
+    }
+  }
+  wireControls(root,cfg.max,render);
+}
+
+// VIZ 4 config: p=&a;q=&b;p=q;r=&c;r=p;
+buildAndersenSteensgaard({
+  svgA:'v4a', svgS:'v4s', code:'v4code', cap:'#viz4 [data-cap]', root:'viz4', max:5,
+  vars:['p','q','r'], objs:['a','b','c'],
+  stmts:[
+    {op:'addr',d:'p',t:'a'},
+    {op:'addr',d:'q',t:'b'},
+    {op:'copy',d:'p',s:'q'},
+    {op:'addr',d:'r',t:'c'},
+    {op:'copy',d:'r',s:'p'}
+  ],
+  captions:[
+    'Step both engines in lockstep. Left = Andersen (inclusion), right = Steensgaard (unification).',
+    '<b>1: p=&a.</b> {a}⊆pts(p). Both engines: p→a.',
+    '<b>2: q=&b.</b> {b}⊆pts(q). Both: q→b.',
+    '<b>3: p=q [copy].</b> Andersen: pts(q)⊆pts(p), one-way ⇒ p gains b, q unchanged. Steensgaard: <b>unifies {p,q}</b> into one node — watch them merge.',
+    '<b>4: r=&c.</b> {c}⊆pts(r). Both: r→c.'
+  ],
+  finalCap:(a,st)=>{
+    const pq = st.find('p')===st.find('q'), pr=st.find('p')===st.find('r');
+    return '<b>5: r=p [copy] — FINAL.</b> '+
+      '<span style="color:var(--ptr)">Andersen:</span> pts(p)={'+[...a.p].sort().join(',')+'}, '+
+      '<b>pts(q)={'+[...a.q].sort().join(',')+'}</b> (q never received anything — directionality), '+
+      'pts(r)={'+[...a.r].sort().join(',')+'}. '+
+      '<span style="color:var(--alias)">Steensgaard:</span> {p,q,r} merged into one node ⇒ '+
+      '<b>pts(p)=pts(q)=pts(r)={'+[...st.ptsOf('p')].sort().join(',')+'}</b>. '+
+      'q <b style="color:var(--alias)">spuriously</b> gains a and c. Tradeoff: O(n³) precise vs O(n·α(n)) coarse.';
+  }
+});
+
+// EX1 config: a=&x;b=&y;a=b;c=a;c=&z;
+buildAndersenSteensgaard({
+  svgA:'ex1a', svgS:'ex1s', code:'ex1code', cap:'#ex1 [data-cap]', root:'ex1', max:5,
+  vars:['a','b','c'], objs:['x','y','z'],
+  stmts:[
+    {op:'addr',d:'a',t:'x'},
+    {op:'addr',d:'b',t:'y'},
+    {op:'copy',d:'a',s:'b'},
+    {op:'copy',d:'c',s:'a'},
+    {op:'addr',d:'c',t:'z'}
+  ],
+  captions:[
+    'Step both engines. The statement a=b is what diverges them.',
+    '<b>1: a=&x.</b> {x}⊆pts(a).',
+    '<b>2: b=&y.</b> {y}⊆pts(b).',
+    '<b>3: a=b [copy].</b> Andersen: pts(b)⊆pts(a), one-way ⇒ pts(a)={x,y}, pts(b)={y}. Steensgaard: <b>unifies {a,b}</b>.',
+    '<b>4: c=a [copy].</b> Andersen: pts(a)⊆pts(c). Steensgaard: unifies {a,b,c} — c drags b along.'
+  ],
+  finalCap:(a,st)=>{
+    return '<b>5: c=&z — FINAL.</b> '+
+      '<span style="color:var(--ptr)">Andersen:</span> pts(a)={'+[...a.a].sort().join(',')+'}, '+
+      '<b>pts(b)={'+[...a.b].sort().join(',')+'}</b> (b never aliases x or z), '+
+      'pts(c)={'+[...a.c].sort().join(',')+'}. '+
+      '<span style="color:var(--alias)">Steensgaard:</span> all three merged ⇒ '+
+      '<b>pts(a)=pts(b)=pts(c)={'+[...st.ptsOf('a')].sort().join(',')+'}</b>. '+
+      'b <b style="color:var(--alias)">spuriously</b> aliases x and z — three spurious facts from unification\'s symmetry.';
+  }
+});
+
+/* =========================================================
+   VIZ 5 — four constraint forms
+========================================================= */
+(function(){
+  const svg=document.getElementById('v5svg');
+  const cap=document.querySelector('#viz5 [data-cap]');
+  let form='addr';
+  function render(){
+    clear(svg);const mk=defs(svg,'#5BC8FF');const mkA=defs(svg,'#C792EA');
+    function V(x,y,l){return cell(svg,x,y,76,42,l,'var');}
+    function O(x,y,l){return cell(svg,x,y,64,40,l,'obj');}
+    function note(txt,color){
+      const t=el("text",{x:350,y:206,'text-anchor':'middle','font-family':'var(--mono)','font-size':13,fill:color||'var(--ptr)'},svg);
+      t.textContent=txt;
+    }
+    if(form==='addr'){
+      const a=V(120,90,'a'), b=O(470,92,'b');
+      arrow(svg,a,b,{marker:mk,cls:'pulse'});
+      note('a = &b   ⇒   {b} ⊆ pts(a)');
+      cap.className='cap';cap.innerHTML='<b>Address-of.</b> The base case: <code class="inl">a=&b</code> puts the object b directly into pts(a). One edge, no dereference.';
+    } else if(form==='copy'){
+      const a=V(120,50,'a'), b=V(120,150,'b'), o=O(470,92,'o');
+      arrow(svg,b,o,{marker:mk});
+      // copy: one-way edge a <- b meaning pts(b) subseteq pts(a). a gains o
+      arrow(svg,a,o,{marker:mk,cls:'pulse'});
+      // directional arrow b -> a (constraint direction)
+      el("line",{x1:158,y1:150,x2:158,y2:92,stroke:'var(--alias)','stroke-width':2,'stroke-dasharray':'4 3',
+        'marker-end':`url(#${mkA})`},svg);
+      el("text",{x:200,y:124,'font-family':'var(--mono)','font-size':10,fill:'var(--alias)'},svg).textContent='one-way';
+      note('a = b   ⇒   pts(b) ⊆ pts(a)');
+      cap.className='cap';cap.innerHTML='<b>Copy.</b> a gets everything b points to — but the inclusion is <b>one-way</b> (violet). pts(b) does not grow. This directionality is exactly what Andersen keeps and Steensgaard loses.';
+    } else if(form==='load'){
+      // a = *b : for o in pts(b): pts(o) subseteq pts(a)
+      const a=V(60,92,'a'), b=V(250,92,'b'), o=O(430,92,'o'), w=O(600,92,'w');
+      arrow(svg,b,o,{marker:mk});               // b -> o
+      arrow(svg,o,w,{marker:mk});               // o -> w (o points to w)
+      arrow(svg,a,w,{marker:mk,cls:'pulse',color:'var(--ptr)'}); // a gains w (two hops)
+      el("text",{x:340,y:70,'text-anchor':'middle','font-family':'var(--mono)','font-size':10,fill:'var(--faint)'},svg).textContent='hop 1';
+      el("text",{x:515,y:70,'text-anchor':'middle','font-family':'var(--mono)','font-size':10,fill:'var(--faint)'},svg).textContent='hop 2';
+      note('a = *b   ⇒   ∀ o∈pts(b): pts(o) ⊆ pts(a)');
+      cap.className='cap';cap.innerHTML='<b>Load (two-hop).</b> Follow b to its target o, then o to <i>its</i> target w. a gets what b\'s targets point to. New points-to facts add new copy edges — that\'s why the solver iterates to a fixpoint.';
+    } else {
+      // *a = b : for o in pts(a): pts(b) subseteq pts(o)
+      const b=V(60,92,'b'), a=V(250,92,'a'), o=O(430,92,'o'), w=O(600,92,'w');
+      arrow(svg,a,o,{marker:mk});               // a -> o
+      arrow(svg,b,w,{marker:mk});               // b -> w
+      arrow(svg,o,w,{marker:mk,cls:'pulse',color:'var(--ptr)'}); // o gains w (store flows b into *a's target)
+      el("text",{x:340,y:70,'text-anchor':'middle','font-family':'var(--mono)','font-size':10,fill:'var(--faint)'},svg).textContent='find *a';
+      note('*a = b   ⇒   ∀ o∈pts(a): pts(b) ⊆ pts(o)');
+      cap.className='cap';cap.innerHTML='<b>Store.</b> Follow a to its target o; then b\'s contents flow into pts(o). The store writes through the pointer, so what a points to (o) gains what b points to (w).';
+    }
+  }
+  document.querySelectorAll('#viz5 [data-form]').forEach(b=>b.addEventListener('click',()=>{
+    form=b.dataset.form;
+    document.querySelectorAll('#viz5 [data-form]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+    render();
+  }));
+  render();
+})();
+
+/* =========================================================
+   VIZ 6 — flow-sensitivity & strong update (kill)
+========================================================= */
+(function(){
+  const svg=document.getElementById('v6svg');
+  const code=document.getElementById('v6code');
+  const cap=document.querySelector('#viz6 [data-cap]');
+  const root=document.getElementById('viz6');
+  let flow='insens';
+  let ref=null;
+  function render(step){
+    clear(svg);const mk=defs(svg,'#5BC8FF');const mkD=defs(svg,'#FF5C72');
+    highlightLine(code, step===0?-1:step-1);
+    const p=cell(svg,70,90,84,44,'p','var');
+    const a=cell(svg,430,40,84,42,'a','obj');
+    const b=cell(svg,430,150,84,42,'b','obj');
+    // line1: p->a. line2: p->b (insens keeps both; sens kills a)
+    if(step>=1) {
+      const ea=arrow(svg,p,a,{marker:mk});
+    }
+    if(step>=2){
+      arrow(svg,p,b,{marker:mk,cls:'pulse'});
+      if(flow==='sens'){
+        // strike the p->a edge: redraw killed
+        // redraw p->a as killed (danger dashed with strike)
+        const kp=arrow(svg,p,a,{marker:mkD,color:'var(--danger)',dash:'5 4',opacity:.6});
+        // strike X over edge midpoint
+        const mx=(p.x+p.w+a.x)/2, my=(p.cy+a.cy)/2;
+        el("line",{x1:mx-12,y1:my-12,x2:mx+12,y2:my+12,stroke:'var(--danger)','stroke-width':2.6,class:RM?'':'pulse'},svg);
+        el("line",{x1:mx-12,y1:my+12,x2:mx+12,y2:my-12,stroke:'var(--danger)','stroke-width':2.6},svg);
+        el("text",{x:mx,y:my-18,'text-anchor':'middle','font-family':'var(--mono)','font-size':10,'font-weight':700,fill:'var(--danger)'},svg).textContent='KILL';
+      }
+    }
+    if(step>=3){
+      // *p alias annotation
+      const aliasObjs = flow==='sens' ? ['b'] : ['a','b'];
+      const t=el("text",{x:280,y:222,'text-anchor':'middle','font-family':'var(--mono)','font-size':12,fill:'var(--alias)'},svg);
+      t.textContent='*p may-alias '+(aliasObjs.length>1?'{a, b}':'{b}');
+    }
+    const caps=[
+      'Pick a mode, then <b>Play</b>.',
+      '<b>1: p=&a.</b> p points to a.',
+      flow==='sens'
+        ? '<b>2: p=&b.</b> Flow-sensitive: this is a re-assignment, so it <b style="color:var(--danger)">KILLS</b> the old fact p→a (struck out). p now points to <b>only b</b>.'
+        : '<b>2: p=&b.</b> Flow-insensitive: assignments only generate, never kill ⇒ pts(p) = {a, b}.',
+      flow==='sens'
+        ? '<b>3: x=*p.</b> Since the kill left pts(p)={b}, <code class="inl">*p</code> aliases <b>only b</b>. The single-target guarantee enables strong updates (DSE, forwarding).'
+        : '<b>3: x=*p.</b> pts(p)={a,b}, so <code class="inl">*p</code> may-alias <b>both a and b</b>. No kill ⇒ only weak updates ⇒ DSE and forwarding blocked.'
+    ];
+    cap.className= (flow==='sens'&&step>=2)?'cap':'cap';
+    cap.innerHTML=caps[step];
+  }
+  ref=wireControls(root,3,render);
+  document.querySelectorAll('#viz6 [data-flow]').forEach(b=>b.addEventListener('click',()=>{
+    flow=b.dataset.flow;
+    document.querySelectorAll('#viz6 [data-flow]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+    ref.go(ref.get());
+  }));
+})();
+
+/* =========================================================
+   VIZ 7 — context-sensitivity
+========================================================= */
+(function(){
+  const svg=document.getElementById('v7svg');
+  const cap=document.querySelector('#viz7 [data-cap]');
+  let ctx='insens';
+  function render(){
+    clear(svg);const mk=defs(svg,'#5BC8FF');const mkD=defs(svg,'#FF5C72');
+    // a=id(&x); b=id(&y)
+    const a=cell(svg,40,40,72,40,'a','var');
+    const b=cell(svg,40,170,72,40,'b','var');
+    const x=cell(svg,560,40,64,40,'x','obj');
+    const y=cell(svg,560,170,64,40,'y','obj');
+    if(ctx==='insens'){
+      // single merged q
+      const q=cell(svg,300,105,84,42,'q','var');
+      // q points to both x and y
+      arrow(svg,q,x,{marker:mk});
+      arrow(svg,q,y,{marker:mk});
+      // a and b each receive from q -> both x,y
+      arrow(svg,a,x,{marker:mk});
+      arrow(svg,a,y,{marker:mkD,color:'var(--danger)',dash:'5 4',opacity:.75}); // spurious a->y
+      arrow(svg,b,y,{marker:mk});
+      arrow(svg,b,x,{marker:mkD,color:'var(--danger)',dash:'5 4',opacity:.75}); // spurious b->x
+      el("text",{x:340,y:80,'text-anchor':'middle','font-family':'var(--mono)','font-size':10,fill:'var(--faint)'},svg).textContent='both calls merge';
+      el("text",{x:340,y:240,'text-anchor':'middle','font-family':'var(--mono)','font-size':11.5,fill:'var(--danger)'},svg).textContent='spurious cross-flow: a→y, b→x';
+      cap.className='cap warn';
+      cap.innerHTML='<b>Context-INsensitive.</b> id is analyzed once; both calls merge ⇒ q points to {x,y}. The merged result flows back to <i>both</i> sites ⇒ a spuriously may-aliases y and b may-aliases x (dashed red).';
+    } else {
+      // two clones q1, q2
+      const q1=cell(svg,300,40,84,40,'q@1','var');
+      const q2=cell(svg,300,170,84,40,'q@2','var');
+      arrow(svg,a,q1,{marker:mk});
+      arrow(svg,q1,x,{marker:mk});
+      arrow(svg,b,q2,{marker:mk});
+      arrow(svg,q2,y,{marker:mk});
+      el("text",{x:340,y:240,'text-anchor':'middle','font-family':'var(--mono)','font-size':11.5,fill:'var(--ok)'},svg).textContent='clean: a→x, b→y';
+      cap.className='cap good';
+      cap.innerHTML='<b>Context-Sensitive.</b> id is cloned per call site (q@1, q@2). Call 1 gives a→x; call 2 gives b→y. No cross-flow — a aliases only x, b only y. Precise, at the cost of a clone per context.';
+    }
+  }
+  document.querySelectorAll('#viz7 [data-ctx]').forEach(b=>b.addEventListener('click',()=>{
+    ctx=b.dataset.ctx;
+    document.querySelectorAll('#viz7 [data-ctx]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+    render();
+  }));
+  render();
+})();
+
+/* =========================================================
+   EX2 — flow sens vs insens DSE
+========================================================= */
+(function(){
+  const svg=document.getElementById('ex2svg');
+  const code=document.getElementById('ex2code');
+  const cap=document.querySelector('#ex2 [data-cap]');
+  const root=document.getElementById('ex2');
+  let flow='insens';
+  let ref=null;
+  function render(step){
+    clear(svg);const mk=defs(svg,'#5BC8FF');const mkD=defs(svg,'#FF5C72');const mkO=defs(svg,'#4ADE9E');
+    highlightLine(code, step===0?-1:step-1);
+    const p=cell(svg,60,100,80,44,'p','var');
+    const g=cell(svg,360,40,150,46,'g','obj');
+    const h=cell(svg,360,160,150,46,'h','obj');
+    // values
+    function val(c,v,col){const t=el("text",{x:c.x+c.w-26,y:c.cy+6,'text-anchor':'middle','font-family':'var(--mono)','font-size':18,'font-weight':700,fill:col||'#ffe0b5'},svg);t.textContent=v;}
+    // step1 p=&g
+    if(step>=1) arrow(svg,p,g,{marker:mk});
+    // step2 *p=1 -> store to g (insens: also h since pts={g,h}? at step2 pts(p)... in insens whole map is {g,h} eventually; here we show write target)
+    if(step>=2){
+      if(flow==='sens'){ val(g,'1','#ffe0b5'); }
+      else { val(g,'1?','#ffb454'); }
+    }
+    // step3 p=&h (sens kills p->g)
+    if(step>=3){
+      arrow(svg,p,h,{marker:mk,cls:'pulse'});
+      if(flow==='sens'){
+        arrow(svg,p,g,{marker:mkD,color:'var(--danger)',dash:'5 4',opacity:.55});
+        const mx=(p.x+p.w+g.x)/2,my=(p.cy+g.cy)/2;
+        el("line",{x1:mx-10,y1:my-10,x2:mx+10,y2:my+10,stroke:'var(--danger)','stroke-width':2.4},svg);
+        el("line",{x1:mx-10,y1:my+10,x2:mx+10,y2:my-10,stroke:'var(--danger)','stroke-width':2.4},svg);
+        el("text",{x:mx,y:my-16,'text-anchor':'middle','font-family':'var(--mono)','font-size':10,'font-weight':700,fill:'var(--danger)'},svg).textContent='KILL';
+      }
+    }
+    // step4 *p=2 -> store to h
+    if(step>=4){ if(flow==='sens'){val(g,'1','#ffe0b5');val(h,'2','#ffe0b5');} else {val(g,'1?','#ffb454');val(h,'2?','#ffb454');} }
+    // step5 y=h read
+    if(step>=5){
+      const yb=cell(svg,560,100,110,46,'y','var');
+      arrow(svg,h,yb,{marker:mkO,color:flow==='sens'?'var(--ok)':'var(--alias)'});
+      val(yb, flow==='sens'?'2':'?', flow==='sens'?'#cdf6e3':'#e7d4f7');
+      if(flow==='sens'){
+        // mark line 2 store as DEAD
+        el("text",{x:435,y:120,'text-anchor':'middle','font-family':'var(--mono)','font-size':12,'font-weight':700,fill:'var(--ok)'},svg).textContent='store *p=1 → g is DEAD ✓';
+      } else {
+        el("text",{x:435,y:120,'text-anchor':'middle','font-family':'var(--mono)','font-size':11.5,fill:'var(--alias)'},svg).textContent='can\'t prove dead — DSE blocked';
+      }
+    }
+    const insCaps=[
+      'Flow-INsensitive: one global map, no kill. <b>Play</b>.',
+      '<b>1: p=&g.</b> p→g.',
+      '<b>2: *p=1.</b> But pts(p) is globally {g,h} — the store can\'t be pinned to g alone (shown 1?).',
+      '<b>3: p=&h.</b> No kill ⇒ pts(p) stays {g,h}.',
+      '<b>4: *p=2.</b> Again ambiguous between g and h.',
+      '<b>5: y=h.</b> The analysis never separated the g-write from the h-write ⇒ it <b>cannot prove</b> line 2 dead. DSE blocked.'
+    ];
+    const sensCaps=[
+      'Flow-Sensitive: per-point map with kill. <b>Play</b>.',
+      '<b>1: p=&g.</b> pts(p)={g}.',
+      '<b>2: *p=1.</b> p points to exactly g ⇒ strong update writes g=1.',
+      '<b>3: p=&h.</b> Re-assignment <b style="color:var(--danger)">KILLS</b> p→g. pts(p)={h}.',
+      '<b>4: *p=2.</b> Writes h=2 (different object).',
+      '<b>5: y=h.</b> g was written at line 2 and is <b>never read</b> (line 5 reads h, line 4 wrote h). ⇒ <b style="color:var(--ok)">store *p=1 to g is DEAD</b> — eliminate it.'
+    ];
+    cap.className = (flow==='sens'&&step>=5)?'cap good':(flow==='insens'&&step>=5?'cap':'cap');
+    cap.innerHTML = (flow==='sens'?sensCaps:insCaps)[step];
+  }
+  ref=wireControls(root,5,render);
+  document.querySelectorAll('#ex2 [data-flow]').forEach(b=>b.addEventListener('click',()=>{
+    flow=b.dataset.flow;
+    document.querySelectorAll('#ex2 [data-flow]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+    ref.go(ref.get());
+  }));
+})();
+
+/* =========================================================
+   EX3 — aliasing blocks LICM
+========================================================= */
+(function(){
+  const svg=document.getElementById('ex3svg');
+  const cap=document.querySelector('#ex3 [data-cap]');
+  const root=document.getElementById('ex3');
+  let aa='noalias';
+  let ref=null;
+  // steps: 0 loop with load inside; 1 query alias(p,q); 2 decision; 3 transformed code
+  function render(step){
+    clear(svg);
+    // We render a "code panel" inside the SVG plus an alias indicator
+    const W=700;
+    // alias chip
+    function chip(txt,col,x,y){
+      const g=el("g",{class:RM?'':'fadein'},svg);
+      el("rect",{x,y,width:150,height:34,rx:17,fill:'none',stroke:col,'stroke-width':1.8},g);
+      const t=el("text",{x:x+75,y:y+22,'text-anchor':'middle','font-family':'var(--mono)','font-size':12,'font-weight':700,fill:col},g);t.textContent=txt;
+    }
+    // loop box
+    function loopBox(x,y,w,h,lines,hoisted){
+      const g=el("g",{class:RM?'':'fadein'},svg);
+      el("rect",{x,y,width:w,height:h,rx:12,fill:'var(--surface2)',stroke:'var(--line)','stroke-width':1.5},g);
+      lines.forEach((ln,i)=>{
+        const ty=y+26+i*24;
+        const col = ln.c||'#cfe6ff';
+        if(ln.hl){el("rect",{x:x+4,y:ty-15,width:w-8,height:21,rx:5,fill:'rgba(91,200,255,.14)'},g);}
+        const t=el("text",{x:x+16,y:ty,'font-family':'var(--mono)','font-size':13,fill:col},g);
+        t.textContent=ln.t;
+      });
+      return g;
+    }
+    // Left: the loop as written
+    const same = aa==='may';
+    if(step>=0){
+      el("text",{x:30,y:26,'font-family':'var(--disp)','font-size':13,'font-weight':600,fill:'var(--muted)'},svg).textContent='loop as written';
+      loopBox(30,40,300,150,[
+        {t:'for (i=0; i<n; i++) {'},
+        {t:'  t = *p;     // invariant?',c:'#9be7c6',hl:true},
+        {t:'  sum += t;'},
+        {t:'  *q = i;     // store',c:'#ffd9a6'},
+        {t:'}'}
+      ]);
+    }
+    if(step>=1){
+      // alias query
+      chip(aa==='noalias'?'p NoAlias q':'p MayAlias q', aa==='noalias'?'var(--ok)':'var(--danger)', 400,50);
+      el("text",{x:475,y:104,'text-anchor':'middle','font-family':'var(--mono)','font-size':11,fill:'var(--faint)'},svg).textContent='does *q=i touch *p?';
+    }
+    if(step>=2){
+      const ok = aa==='noalias';
+      const t=el("text",{x:475,y:130,'text-anchor':'middle','font-family':'var(--mono)','font-size':12.5,'font-weight':700,
+        fill:ok?'var(--ok)':'var(--danger)'},svg);
+      t.textContent = ok?'store can\'t change *p':'store may clobber *p';
+      const t2=el("text",{x:475,y:152,'text-anchor':'middle','font-family':'var(--mono)','font-size':12,fill:ok?'var(--ok)':'var(--danger)'},svg);
+      t2.textContent = ok?'⇒ *p is loop-invariant':'⇒ *p NOT invariant';
+    }
+    if(step>=3){
+      el("text",{x:30,y:220,'font-family':'var(--disp)','font-size':13,'font-weight':600,fill:'var(--muted)'},svg).textContent=aa==='noalias'?'after LICM (hoisted)':'no hoist (reload each iter)';
+      if(aa==='noalias'){
+        loopBox(30,232,640,0,[],true);
+        // draw a compact transformed block spanning width
+        clear; // no-op
+      }
+    }
+    // build transformed code block for step3 as full-width
+    if(step>=3){
+      const lines = aa==='noalias' ? [
+        {t:'t = *p;            // hoisted to preheader — load ONCE',c:'var(--ok)'},
+        {t:'for (i=0; i<n; i++) {'},
+        {t:'  sum += t;'},
+        {t:'  *q = i;'},
+        {t:'}'}
+      ] : [
+        {t:'for (i=0; i<n; i++) {'},
+        {t:'  t = *p;          // must RELOAD every iteration',c:'var(--danger)'},
+        {t:'  sum += t;'},
+        {t:'  *q = i;          // may clobber *p',c:'var(--danger)'},
+        {t:'}'}
+      ];
+      const g=el("g",{class:RM?'':'fadein'},svg);
+      el("rect",{x:30,y:236,width:640,height:26+lines.length*22,rx:12,fill:'var(--surface2)',
+        stroke:aa==='noalias'?'var(--ok)':'var(--danger)','stroke-width':1.6},g);
+      lines.forEach((ln,i)=>{
+        el("text",{x:46,y:262+i*22,'font-family':'var(--mono)','font-size':13,fill:ln.c||'#cfe6ff'},g).textContent=ln.t;
+      });
+    }
+    const caps=[
+      'Toggle the alias result, then <b>Play</b>. Goal: hoist <code class="inl">t=*p</code> to the preheader.',
+      '<b>Query alias(p, q).</b> Legality hinges entirely on this — does the in-loop store <code class="inl">*q=i</code> touch what <code class="inl">*p</code> reads?',
+      aa==='noalias'
+        ? '<b>NoAlias.</b> The store can\'t change <code class="inl">*p</code> ⇒ <code class="inl">*p</code> is genuinely loop-invariant.'
+        : '<b>MayAlias.</b> The store may write the very location <code class="inl">*p</code> reads ⇒ <code class="inl">*p</code> may change each iteration ⇒ not invariant.',
+      aa==='noalias'
+        ? '<b>Hoist is legal.</b> Load once in the preheader (n loads → 1). Big win. (Wrong NoAlias when p==q at runtime would be a miscompile — stale t.)'
+        : '<b>Hoist is illegal.</b> Keep the load in the loop; reload every iteration. Correct but n× slower — the common cost of imprecise alias analysis.'
+    ];
+    cap.className= step>=3 ? (aa==='noalias'?'cap good':'cap warn') : 'cap';
+    cap.innerHTML=caps[step];
+  }
+  ref=wireControls(root,3,render);
+  document.querySelectorAll('#ex3 [data-aa]').forEach(b=>b.addEventListener('click',()=>{
+    aa=b.dataset.aa;
+    document.querySelectorAll('#ex3 [data-aa]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+    ref.go(ref.get());
+  }));
+})();
+
+/* =========================================================
+   QUIZ — scored MCQs + reveal-answer free-response
+========================================================= */
+(function(){
+  const mcqHost=document.getElementById('mcqHost');
+  const frHost=document.getElementById('frHost');
+  if(!mcqHost||!frHost)return;
+
+  // ---- helpers ----
+  function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  // mark up `backticked` spans as inline code, after escaping
+  function fmt(s){return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>');}
+  function codeblock(lines){
+    // lines: array of plain text source lines, rendered in the page's code-block component
+    const rows=lines.map((ln,i)=>
+      `<div class="cl"><span class="ln">${i+1}</span>${esc(ln)}</div>`).join('');
+    return `<div class="codeblock" style="margin:12px 0">`+
+      `<div class="chrome"><i></i><i></i><i></i><span class="fn">quiz.snippet</span></div>`+
+      `<div class="code">${rows}</div></div>`;
+  }
+
+  // ---- MCQ data (encoded answer keys) ----
+  // Five authored MCQs (answers: B, A, B, B, C) then bank Q1, Q2, Q3 (answers: B, B, C)
+  const MCQ=[
+    { prompt:'Live-variable analysis is which kind of data-flow analysis?',
+      options:{A:'Forward, must (intersection)',B:'Backward, may (union)',C:'Forward, may (union)',D:'Backward, must (intersection)'},
+      answer:'B',
+      explanation:'Liveness flows backward and is a may/union problem — a variable is live at a point if it is used on SOME path before being redefined.' },
+    { prompt:'Available-expressions analysis is which kind?',
+      options:{A:'Forward, must (intersection)',B:'Backward, may (union)',C:'Forward, may (union)',D:'Backward, must (intersection)'},
+      answer:'A',
+      explanation:'An expression is available only if computed on ALL paths reaching the point and not killed since — forward, must/intersection. (Contrast with liveness: backward/may.)' },
+    { prompt:'In Andersen’s (inclusion-based) analysis, the constraint generated by a copy `a = b` is:',
+      options:{A:'`{b} ⊆ pts(a)`',B:'`pts(b) ⊆ pts(a)`',C:'`pts(a) = pts(b)`',D:'`pts(a) ⊆ pts(b)`'},
+      answer:'B',
+      explanation:'A copy is a one-way subset — `a` gains everything `b` points to. `{b}⊆pts(a)` is address-of; `pts(a)=pts(b)` is Steensgaard’s unification (equality), not Andersen; D has the direction backwards.' },
+    { prompt:'Store-to-load forwarding — replacing `y = *q` with the value just stored to `*p` — is sound only when:',
+      options:{A:'`p` and `q` MAY-alias',B:'`p` and `q` MUST-alias (and no intervening store may-aliases `q`)',C:'`p` and `q` are provably NoAlias',D:'the analysis is flow-insensitive'},
+      answer:'B',
+      explanation:'Forwarding REWRITES a value, so it needs a guarantee that `q` reads exactly what was stored to `p` — must-alias (under-approximation). May-alias only says “maybe,” which is not enough to rewrite; NoAlias means the opposite (they don’t coincide).' },
+    { prompt:'The C/C++ `restrict` (CUDA `__restrict__`) qualifier asserts what, and what happens if the program violates it?',
+      options:{A:'The pointer is non-null; a runtime crash',B:'The memory is `volatile`; forces reloads',C:'The object is not accessed through any other pointer (NoAlias); violating it is undefined behavior',D:'The pointer is `const`; a compile error'},
+      answer:'C',
+      explanation:'`restrict` is a programmer NoAlias promise that lets the compiler vectorize/reorder memory ops; if two `restrict` pointers actually overlap, behavior is undefined (the optimizer may have assumed independence).' },
+    // bank Q1
+    { prompt:'Which statement about may-alias vs must-alias is correct?',
+      options:{A:'May-alias is an under-approximation used to enable load forwarding.',B:'May-alias is an over-approximation used to forbid unsafe reorderings; must-alias is an under-approximation used to enable transforms.',C:'Must-alias is an over-approximation; a ‘must-alias = yes’ answer may be a false positive.',D:'May-alias and must-alias coincide for flow-insensitive analyses.'},
+      answer:'B',
+      explanation:'May-alias over-approximates (a ‘yes’ can be a false positive) and is sound for FORBIDDING unsafe reordering. Must-alias under-approximates (a ‘yes’ is a guarantee) and soundly ENABLES transforms like store-to-load forwarding. A swaps the roles; C is backward; D is false (flow-insensitivity does not collapse the may/must distinction).' },
+    // bank Q2
+    { prompt:'A pointer analysis uses union-find so that each assignment `a = b` merges `a` and `b` into one equivalence class, giving each node a single out-edge. Which analysis is this, and its worst-case time complexity?',
+      options:{A:'Andersen’s analysis; O(n^3).',B:'Steensgaard’s analysis; O(n·α(n)) (near-linear).',C:'Steensgaard’s analysis; O(n^3).',D:'Andersen’s analysis; O(n log n).'},
+      answer:'B',
+      explanation:'Union-find / equivalence-class merging with a single out-edge per node is Steensgaard’s unification-based analysis, near-linear O(n·α(n)). A/D misattribute to Andersen (which is inclusion/subset-based and O(n^3)); C has the right analysis but Andersen’s complexity.' },
+    // bank Q3 — uses code block
+    { prompt:'Run Andersen’s (inclusion-based) analysis to fixpoint on the code below. What is pts(c)?',
+      code:['a = &w;','b = &v;','a = b;','c = a;'],
+      options:{A:'{w}',B:'{v}',C:'{w, v}',D:'{} (empty — c is never assigned an address-of)'},
+      answer:'C',
+      explanation:'s1 pts(a)={w}; s2 pts(b)={v}; s3 (a=b) pts(b) ⊆ pts(a) → pts(a)={w,v}; s4 (c=a) pts(a) ⊆ pts(c) → pts(c)={w,v}. A ignores the copy feeding v in; B is wrong (even Steensgaard gives {w,v} here); D wrongly assumes c needs a direct address-of.' }
+  ];
+
+  // ---- free-response data (bank Q4, Q5, Q6) ----
+  const FR=[
+    { prompt:'For `for (i=0;i<n;i++) A[i] = A[i] + B[i];` (a) What alias/dependence fact must the compiler establish to legally vectorize? (b) If A and B are `float*` parameters, why might a field/array-insensitive points-to analysis alone be insufficient, and what additional analysis or annotation resolves it? (c) Give a concrete runtime scenario where vectorizing is a miscompile, and the precise condition that rules it out.',
+      answer_key:[
+        '(a) No loop-carried dependence between iterations: A and B must NoAlias (writing A[i] never changes any B[j]); the per-iteration A[i] read+write is a distance-0 self-dependence which is fine.',
+        '(b) Index-insensitive points-to summarizes a whole array as one abstract location, so it cannot separate A[i] from A[j] and reports MayAlias if A and B might overlap; a context-insensitive whole-program analysis may also merge callers passing overlapping arrays. Resolution: a subscript dependence test (GCD/Banerjee, or LLVM scev-aa), or the programmer asserts `restrict` (NoAlias, violation is UB). TBAA does not help (both are float => same type => MayAlias).',
+        '(c) Caller passes B = A + 1 (overlapping, shifted by one): A[i] = A[i] + A[i+1], so iteration i reads A[i+1] which iteration i+1 writes — a loop-carried dependence at distance 1. Vectorizing reorders the read/write interleaving and changes results. Ruled out by: dependence distance >= vectorization factor (i.e., NoAlias or a proven safe distance); `restrict`/proven-NoAlias supplies this.'
+      ],
+      grading_notes:'Full credit requires: (a) the NoAlias / no-loop-carried-dependence fact; (b) the array-summarization imprecision AND a real resolver (dependence test or restrict), bonus for noting TBAA fails on same-type; (c) the B=A+1 overlap scenario and the distance>=VF condition.' },
+    { prompt:'‘We made our whole-program pointer analysis context-sensitive and it got more precise but time/memory exploded; making it flow-sensitive barely helped.’ (a) With a small sketch, why does context-sensitivity improve precision for procedure/OO-heavy code, and why can the cost blow up (call strings/cloning, recursion)? (b) Why might flow-sensitivity buy little here while context-sensitivity buys a lot? (c) Explain the call-graph ↔ points-to mutual dependency and why a one-shot analysis is impossible.',
+      answer_key:[
+        '(a) Context-sensitivity specializes a procedure per calling context so callers don’t merge. For `id(q){return q;}` with `a=id(&x), b=id(&y)`: context-insensitive merges calls -> pts(q)={x,y} -> a~y, b~x spurious; context-sensitive clones per site -> a->x, b->y. Cost: context = call string (call sites on the stack); distinct contexts can be ~10^14 in real Java; recursion makes call strings infinite, so recursive SCCs must be collapsed (BDDs used to store results).',
+        '(b) For OO/procedure-heavy code, imprecision comes mostly from merging callers at procedure boundaries (fixed by context-sensitivity). Methods are small with little intra-body reassignment to ‘kill’, so flow-sensitivity (statement order) barely changes per-point info. Dragon Book 12.4 makes exactly this argument and chooses a flow-insensitive algorithm.',
+        '(c) To build the call graph you must resolve indirect/virtual calls (`x.m()` depends on the runtime type x points to; `(*fp)()` depends on what fp points to) — needs points-to. To propagate points-to across a call (actuals->formals, return->lhs) you must know the callee — needs the call graph. Neither is first; discover the call graph on the fly and iterate to a joint fixpoint (12.5.1, invokes relation). One-shot is impossible because each new call target adds copy edges that grow points-to sets, which can reveal new call targets — iterate until nothing new.'
+      ],
+      grading_notes:'Full credit: (a) the merge-vs-clone precision point + a blowup mechanism (call strings/recursion); (b) small-method rationale tied to flow-insensitive choice; (c) the mutual dependency and the iterate-to-joint-fixpoint resolution.' },
+    { prompt:'Type-punning: `int i = *(int*)&x;` on a float x, then `x = *(float*)&i;`. (a) Why is this undefined under strict aliasing, and what is the optimizer permitted to assume about `int*` vs `float*` accesses? (b) Describe a concrete miscompilation, connecting it to the may-alias soundness principle. (c) Give two UB-free ways to do the bit reinterpretation and why each is sound.',
+      answer_key:[
+        '(a) Strict aliasing (C11 6.5p7): an object may be accessed only through a compatible-type lvalue (or a character type). Accessing a float through `int*` and an int through `float*` are incompatible-type accesses => UB. The optimizer may assume `int*` and `float*` accesses never alias (TBAA), so the int access cannot affect the float object and vice versa.',
+        '(b) The compiler assumes the int store to i cannot alias the float x, so it may reorder/eliminate the read-back or keep x in a register across the sequence, returning the original x or garbage. This is the may-alias soundness principle in reverse: normally a wrong NoAlias causes a miscompile; here the language hands the compiler a NoAlias for free (via UB), so `*(int*)&x` and x are treated as non-aliasing though they name the same storage, and stale-value forwarding becomes legal.',
+        '(c) 1) `memcpy(&i,&x,sizeof i)`: copies the object representation as bytes (character access is defined), no type-punning UB; compilers lower it to a single move. 2) `std::bit_cast<int>(x)` (C++20) or a union (C99/C11): a defined bit reinterpretation that never forms an int*/float* lvalue to the same object, so TBAA’s no-alias assumption is never violated. (Also acceptable: `-fno-strict-aliasing` — sound but disables optimizations and is non-portable.)'
+      ],
+      grading_notes:'Full credit: (a) incompatible-type access => UB + the TBAA no-alias assumption; (b) a real miscompile (reorder/elide/register-keep) tied to the NoAlias-for-free framing; (c) two of {memcpy, union/bit_cast, -fno-strict-aliasing} with a soundness reason.' }
+  ];
+
+  // ---- score state (first-attempt only) ----
+  const N=MCQ.length;
+  const answered=new Array(N).fill(false);   // locked?
+  const firstCorrect=new Array(N).fill(false);
+  let score=0;
+  const scoreNum=document.getElementById('scoreNum');
+  const scoreDen=document.getElementById('scoreDen');
+  const scoreBar=document.getElementById('scoreBar');
+  const scoreSub=document.getElementById('scoreSub');
+  scoreDen.textContent=String(N);
+  function updateScore(){
+    scoreNum.textContent=String(score);
+    scoreBar.style.width=(score/N*100)+'%';
+    const done=answered.filter(Boolean).length;
+    scoreSub.textContent = done===0 ? 'answer the multiple-choice questions'
+      : done<N ? (done+' of '+N+' answered') : 'all answered';
+  }
+
+  // ---- build MCQ cards ----
+  MCQ.forEach((q,qi)=>{
+    const card=document.createElement('div');
+    card.className='qcard';
+    const keys=Object.keys(q.options);
+    let html=`<div class="qnum">Q${qi+1} · multiple choice</div>`+
+      `<div class="qprompt">${fmt(q.prompt)}</div>`;
+    if(q.code)html+=codeblock(q.code);
+    html+=`<div class="opts" role="group" aria-label="answer options">`;
+    keys.forEach(k=>{
+      html+=`<button class="opt" type="button" data-k="${k}">`+
+        `<span class="key">${k}</span>`+
+        `<span class="otext">${fmt(q.options[k])}</span>`+
+        `<span class="mark" aria-hidden="true"></span></button>`;
+    });
+    html+=`</div><div class="explain" hidden></div>`;
+    card.innerHTML=html;
+    const explain=card.querySelector('.explain');
+    card.querySelectorAll('.opt').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        if(answered[qi])return;
+        answered[qi]=true;
+        const chosen=btn.dataset.k;
+        const isCorrect=chosen===q.answer;
+        if(isCorrect){firstCorrect[qi]=true;score++;}
+        // lock + mark all options
+        card.querySelectorAll('.opt').forEach(o=>{
+          o.setAttribute('disabled','');
+          const k=o.dataset.k;
+          const mark=o.querySelector('.mark');
+          if(k===chosen){
+            o.classList.add(isCorrect?'correct':'wrong');
+            mark.textContent=isCorrect?'✓':'✗';
+          }
+          if(!isCorrect && k===q.answer){
+            o.classList.add('reveal');
+            mark.textContent='✓';
+          }
+        });
+        explain.className='explain '+(isCorrect?'good':'bad');
+        explain.innerHTML=(isCorrect?'<b>Correct.</b> ':'<b>Not quite.</b> ')+fmt(q.explanation);
+        explain.hidden=false;
+        updateScore();
+      });
+    });
+    mcqHost.appendChild(card);
+  });
+
+  // ---- build free-response cards ----
+  FR.forEach((q,qi)=>{
+    const card=document.createElement('div');
+    card.className='qcard';
+    let pts=q.answer_key.map(p=>`<li>${fmt(p)}</li>`).join('');
+    card.innerHTML=
+      `<div class="qnum">Free-response ${qi+1} · reveal model answer</div>`+
+      `<div class="qprompt">${fmt(q.prompt)}</div>`+
+      `<textarea class="fra" placeholder="Optional: draft your own answer here before revealing…" aria-label="your answer"></textarea>`+
+      `<button class="btn primary reveal-btn" type="button">Reveal model answer</button>`+
+      `<div class="model" hidden>`+
+        `<div class="mhead">Model answer</div><ul>${pts}</ul>`+
+        `<div class="grading"><b>What full credit needs:</b> ${fmt(q.grading_notes)}</div>`+
+      `</div>`;
+    const model=card.querySelector('.model');
+    const btn=card.querySelector('.reveal-btn');
+    btn.addEventListener('click',()=>{
+      const show=model.hidden;
+      model.hidden=!show;
+      btn.textContent=show?'Hide model answer':'Reveal model answer';
+    });
+    frHost.appendChild(card);
+  });
+
+  // ---- reset ----
+  document.getElementById('resetQuiz').addEventListener('click',()=>{
+    score=0;
+    for(let i=0;i<N;i++){answered[i]=false;firstCorrect[i]=false;}
+    mcqHost.querySelectorAll('.qcard').forEach(card=>{
+      card.querySelectorAll('.opt').forEach(o=>{
+        o.removeAttribute('disabled');
+        o.classList.remove('correct','wrong','reveal');
+        o.querySelector('.mark').textContent='';
+      });
+      const ex=card.querySelector('.explain');
+      ex.hidden=true;ex.className='explain';ex.innerHTML='';
+    });
+    frHost.querySelectorAll('.qcard').forEach(card=>{
+      const model=card.querySelector('.model');
+      model.hidden=true;
+      card.querySelector('.reveal-btn').textContent='Reveal model answer';
+      card.querySelector('.fra').value='';
+    });
+    updateScore();
+  });
+
+  updateScore();
+})();
+
+/* =========================================================
+   INTERVIEW — interviewer-framed prompts, probes, reveal
+========================================================= */
+(function(){
+  const host=document.getElementById('ivHost');
+  if(!host)return;
+
+  function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function fmt(s){return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>');}
+
+  // theme -> chip label + accent color (palette by meaning)
+  const THEME={
+    'debug':        {label:'DEBUG',           color:'var(--danger)'},
+    'design':       {label:'DESIGN',          color:'var(--ptr)'},
+    'defend-tradeoff':{label:'DEFEND TRADEOFF',color:'var(--alias)'},
+    'first-principles':{label:'FIRST PRINCIPLES',color:'var(--obj)'},
+    'implementation':{label:'IMPLEMENTATION', color:'var(--ok)'},
+    'practical':    {label:'IN PRACTICE',     color:'var(--ptr)'}
+  };
+
+  const IQ=[
+    { iqid:'tcl.ipa.pointer.iq1', theme:'debug', level:'diagnose',
+      scenario:"Here's a real one we hit. A numerical routine gives correct output at -O0 but garbage at -O2 — same compiler, same source. The author swears the code is correct. Walk me through how you'd figure out whether this is an aliasing problem, and how you'd actually prove it rather than just guess.",
+      probes:[
+        "Suppose `-fno-strict-aliasing` makes it pass. What does that tell you, and what does it NOT tell you?",
+        "You think it's strict aliasing. How do you find the exact line and confirm it from the IR rather than by trial and error?",
+        "What if `-fno-strict-aliasing` does NOT fix it, but disabling one optimization pass does — how does your hypothesis change?"
+      ],
+      model_answer:[
+        "Frame it first: an -O0 vs -O2 divergence with no UBSan/ASan signal is the classic fingerprint of the optimizer acting on an assumption the source violates — and aliasing assumptions (strict aliasing / TBAA, restrict, real points-to NoAlias) are the most common such assumption. But it could also be UB unrelated to aliasing (uninitialized reads, signed overflow, OOB), so don't commit yet.",
+        "Cheap discriminating probes first. (1) Build at -O2 with `-fsanitize=undefined,address` — catches OOB, overflow, some bad casts, narrows the space fast. (2) Toggle `-fno-strict-aliasing`. If it now passes, that strongly implicates a TBAA / type-punning / strict-aliasing bug: the compiler was assuming two incompatible-typed accesses NoAlias and forwarding/reordering across them. If it does NOT pass, strict aliasing is likely not the culprit — move on to restrict misuse or a genuine points-to/optimizer issue.",
+        "Note the asymmetry: `-fno-strict-aliasing` fixing it is strong evidence FOR a TBAA bug, but it not fixing it does not fully exonerate aliasing — the bug could be a misplaced `restrict`/`__restrict__` (a programmer NoAlias assertion that's actually false), which `-fno-strict-aliasing` does not touch. So also grep for `restrict` on the hot pointers and test removing it.",
+        "Localize, don't bisect blindly. Bisect the optimization that triggers it: `-O2 -fno-<pass>` or opt's `-print-after-all` to find which transform changes the result; the usual suspects are GVN/load-PRE, DSE, LICM, MemCpyOpt, or the vectorizer — all AA consumers. Pinning the pass tells you which memory op got moved/elided.",
+        "Confirm from the IR, not vibes. Emit LLVM IR (`-emit-llvm -S`) and read the `!tbaa` metadata on the suspect load/store — incompatible TBAA tags on accesses to the same storage is the smoking gun. You can dump alias-query results (`-aa-eval -print-all-alias-modref-info`, or `-print-before/after=<pass>`) and look for a NoAlias on the pair that the runtime says overlaps. Tie it back to the principle: a wrong NoAlias is a miscompile — here the *language* handed the optimizer the NoAlias for free via strict-aliasing UB.",
+        "Fixes, in order of preference: replace the type pun with `memcpy` (byte/character access is defined and lowers to a single move), or `std::bit_cast` (C++20) / a `union` (C); use `char*`/`std::byte*` for legitimately byte-wise access; remove a false `restrict`. `-fno-strict-aliasing` is a sound last-resort mitigation but it's a global de-optimization and non-portable — fix the source instead."
+      ],
+      interviewer_signal:"Tests whether the candidate has a disciplined differential-diagnosis method for optimizer miscompiles vs. flailing. Red flags: jumping straight to '-O2 is buggy, file a compiler bug' without suspecting their own UB; treating `-fno-strict-aliasing` passing as the *end* of the investigation rather than a clue; not knowing that ASan/UBSan and IR inspection are available; claiming `-fno-strict-aliasing` not fixing it fully rules out aliasing (it ignores `restrict`). A senior answer separates 'reproduce/narrow' from 'root-cause/confirm', reads `!tbaa` metadata or alias-query dumps to *prove* it rather than infer, knows the asymmetry of the strict-aliasing toggle, and ranks fixes by portability/soundness (memcpy/bit_cast over the global flag).",
+      grounding:"Lesson §6 (TBAA, strict-aliasing UB, 'wrong NoAlias is a miscompile'); Dragon §12.4 (points-to/aliasing). Strict-aliasing UB is C11 6.5p7. LLVM `!tbaa`, `-aa-eval`, `opt -print-after-all` are tool-specific (current LLVM; flag spellings drift across versions)." },
+
+    { iqid:'tcl.ipa.pointer.iq2', theme:'design', level:'design',
+      scenario:"You're building alias analysis for a JIT — say a method-at-a-time JIT where total compile time per method is budgeted in single-digit milliseconds. You can't run a whole-program Andersen solve. Design the AA you'd ship. What do you pick, and what are you knowingly giving up?",
+      probes:[
+        "You said you'd drop flow-sensitivity. Why is that the *first* thing to go and not, say, field-sensitivity?",
+        "How do you model the heap and calls when you can't see the whole program at JIT time?",
+        "Suppose profiling shows the regalloc and LICM passes barely benefit from your AA but GVN does. How does that change what you build?"
+      ],
+      model_answer:[
+        "Anchor the design to the consumers, not to AA elegance. In a JIT the clients are GVN/CSE-over-memory, redundant-load elimination, DSE, LICM of loads, and sometimes the vectorizer. They need cheap, sound may-alias / NoAlias queries on the hot pointers — they do NOT need a precise whole-program points-to map. Budget drives everything.",
+        "Solver discipline: prefer near-linear. Steensgaard-style unification (union-find, O(n·α(n))) over Andersen's inclusion solve (worst-case O(n³)). For a method JIT, often you don't even need a full unification solve — a structural/`basic-aa`-style analysis (distinct allocas, distinct globals, distinct noalias args, GEP-offset reasoning on the same base) answers most intra-method queries in near-constant time. Use unification as the fallback for the murkier pointers.",
+        "Drop flow-sensitivity first because it's the most expensive per unit precision at scale: it forces a distinct points-to solution *per program point* (memory blows up) and its main payoff — strong updates/kills — matters less than disambiguating distinct base objects, which a flow-insensitive analysis already does. The lesson and Dragon §12.4 both note flow-sensitivity 'adds a lot of complexity' and is dropped first. Field-sensitivity, by contrast, is comparatively cheap and high-value (separates struct members), so keep a lightweight version if you can.",
+        "Heap modeling on a budget: allocation-site naming (one abstract object per alloc site), maybe augmented with type-based disambiguation (TBAA from the source language) which is essentially free and very effective in typed IRs. Skip heap cloning / context-sensitive heap — too expensive for the budget.",
+        "Calls / open-world: a method JIT can't see callees. Be intraprocedural with conservative call handling — treat an unknown call as potentially reading/writing any escaped/address-taken memory (a clobber), but exploit cheap facts: non-escaping allocas can't be touched by a callee, `noalias`/`readonly`/`readnone` attributes and argmemonly summaries prune the clobber set. If the runtime supplies cached interprocedural summaries (mod/ref per method) from prior compiles or a profiler, fold those in — that's the cheap way to recover some context.",
+        "State the precision/latency frontier explicitly: you sacrifice flow-sensitivity (no strong updates), context-sensitivity (callers merged / calls treated conservatively), and heap cloning. You keep object-distinctness, field/type disambiguation, and escape-based call pruning — the facts the memory optimizers actually convert into wins.",
+        "If profiling says GVN benefits but LICM/regalloc don't: spend the budget where it pays — make sure the analysis is precise enough on loaded/stored pointers feeding GVN (e.g., good GEP/offset reasoning and TBAA), and don't bother strengthening AA for the queries LICM/regalloc issue. AA is only worth its cost where a consumer turns NoAlias into a transform."
+      ],
+      interviewer_signal:"Tests whether the candidate can reason about an analysis as a *budgeted engineering tradeoff* tied to its consumers, not recite Andersen vs Steensgaard. Red flags: naming an algorithm with no latency reasoning; proposing whole-program Andersen for a method JIT; not knowing what GVN/LICM/DSE actually query; treating unknown calls unsoundly (forgetting they may clobber escaped memory). A senior answer leads with 'what do the consumers need', knows flow-sensitivity is dropped first and *why* (per-point blowup vs. low marginal precision), exploits escape analysis + function attributes to prune call clobbers in the open world, and is willing to skip AA entirely where no client benefits.",
+      grounding:"Lesson §2.1 (flow-sensitivity dropped first), §2.4 (alloc-site/type-based heap), §3.2–3.3 (Andersen O(n³) vs Steensgaard near-linear), §6 (LLVM AA pipeline, `basic-aa`, TBAA, consumers). Dragon §12.4 (flow-insensitive choice). Complexity bounds are literature (Andersen 1994 / Steensgaard 1996), not Dragon-body." },
+
+    { iqid:'tcl.ipa.pointer.iq3', theme:'defend-tradeoff', level:'diagnose',
+      scenario:"A teammate is pushing a strong claim: 'Just use Steensgaard everywhere. It's near-linear, it's sound, and it's good enough — Andersen's cubic solve isn't worth it.' I want you to argue both sides honestly. When is he right, and when is he going to get burned?",
+      probes:[
+        "Give me a concrete tiny example where the difference actually changes whether an optimization fires.",
+        "He says 'but both are sound, so worst case Steensgaard just disables an opt — no correctness risk.' Is that a complete answer?",
+        "Where would you actually deploy each in a real compiler pipeline?"
+      ],
+      model_answer:[
+        "The case FOR (where he's right): Steensgaard is unification-based (union-find), near-linear O(n·α(n)), one pass, tiny memory. For whole-program AA over very large C codebases — millions of LOC — where you need *some* points-to answer fast, or as a coarse seed/pre-pass feeding a more precise analysis, or where downstream consumers only need coarse disambiguation, unification's coarseness is acceptable. The Dragon Book itself notes the equivalence-based formulation 'provides a quick, and often good, answer to which variables point to the same kind of objects.'",
+        "The case AGAINST (where he gets burned): unification is symmetric and transitive — once `a` and `b` merge, everything they and their targets point to is conflated, including facts inclusion would keep apart. Memory optimizations that must disambiguate *specific* pointers (RLE/load-forwarding, DSE, precise GVN) lose exactly the precision they need.",
+        "Concrete example (from the lesson, §3.4): `p=&a; q=&b; p=q; r=&c; r=p`. Andersen (directional inclusion) keeps pts(q)={b}, pts(p)={a,b}, pts(r)={a,b,c} — so q does NOT alias on a or c. Steensgaard unions {p,q,r} into one class pointing to {a,b,c}, so pts(q) spuriously becomes {a,b,c} and q now may-aliases everything. If an optimizer wanted to prove a store through q can't clobber a load of c, Andersen proves NoAlias and the transform fires; Steensgaard reports MayAlias and it's blocked.",
+        "Rebuttal to 'both sound, so worst case is a missed opt': correct that it's not a *correctness* risk — both over-approximate, so Steensgaard only ever errs toward MayAlias (safe). But 'just a missed opt' undersells it: in hot loops a single spurious MayAlias can block vectorization, LICM, or load-forwarding and cost large constant factors of performance. 'Good enough' is a statement about a workload, not a universal — so the honest answer is 'measure on the consumers that matter,' not 'always Steensgaard.'",
+        "Deployment: Steensgaard/CFL-Steensgaard as a fast whole-program seed or for huge codebases / early pipeline; Andersen (or a field-/context-sensitive inclusion analysis) where precision converts to real wins and n is moderate — the memory-opt-heavy middle end. Many real pipelines layer both: cheap AA first, precise AA only on the queries that pay for it.",
+        "Senior framing: 'good enough' is undefined until you name the consumer and the workload. The right call is empirical — same soundness, different precision/cost; pick per phase, possibly run both."
+      ],
+      interviewer_signal:"Tests intellectual honesty (can they argue against a position they may hold) and whether they understand that soundness ≠ usefulness. Red flags: only arguing one side; not being able to produce a concrete pts-set example where the answers diverge; accepting 'both are sound so it doesn't matter' as a full rebuttal (it ignores performance); confusing precision loss with a correctness bug. A senior answer refuses the universal claim, ties the divergence to a *specific* optimization that fires under Andersen and not Steensgaard, acknowledges Steensgaard never produces an unsound NoAlias, and reframes the decision as workload-measured and possibly-layered rather than one-size-fits-all.",
+      grounding:"Lesson §3 (full Andersen/Steensgaard contrast, §3.4 worked example). Dragon §12.4.2 (equivalence-based 'quick and often good' quote, inclusion-based default). Named bounds/framing are literature (Andersen 1994; Steensgaard 1996; Hardekopf & Lin), not Dragon-body." },
+
+    { iqid:'tcl.ipa.pointer.iq4', theme:'first-principles', level:'diagnose',
+      scenario:"Step back from algorithms for a second. Why can't we just compute exact alias information? If I gave you unlimited engineering time, why is there no analysis that tells me precisely, for every pair of pointers, whether they alias?",
+      probes:[
+        "Is this a 'we haven't found the algorithm yet' problem or something deeper? Be precise about what's actually known.",
+        "Even ignoring decidability, name the structural things in real programs that force you to lose information.",
+        "So if exact is impossible, what is the analysis *actually* navigating — what does 'better' even mean here?"
+      ],
+      model_answer:[
+        "It's deeper than 'no algorithm yet' — precise may-alias is undecidable in general. With dynamic allocation and ≥2 levels of dereference, deciding whether two pointers may alias is undecidable; aliasing can encode arbitrary computation. (Landi 1992; Ramalingam 1994 showed even flow-sensitive may-alias is undecidable / intractable in the relevant forms.) So no amount of engineering yields exactness — any sound static analysis is forced to *over-approximate*: it may say MayAlias when they never actually alias, but it must never wrongly say NoAlias.",
+        "The call-graph ↔ points-to mutual recursion. To resolve indirect/virtual calls (`x.m()` depends on x's runtime type; `(*fp)()` depends on what fp points to) you need points-to; to propagate points-to across a call (actuals→formals, return→lhs) you need the call graph. Neither is computable first — they must be solved *jointly to a fixpoint* (Dragon §12.5.1, 'we need to know what the variables can point to in order to compute the call targets; but unless we know the call targets, we cannot find out what the variables can point to'). This circularity is intrinsic, not an implementation wart.",
+        "Even setting decidability aside, the program forces lossy abstraction: the heap is unbounded, so infinitely many runtime objects must be summarized by finitely many abstract names (alloc-site naming merges all objects from one site; recursive data structures collapse a whole list/tree to one node). Arrays are typically index-insensitive, so `a[i]`/`a[j]` may-alias unless a separate dependence test proves otherwise. Recursion forces SCC collapse in call-string contexts. Each of these is a deliberate information loss.",
+        "The sensitivity axes multiply. Flow × context × field × heap-cloning is combinatorial — distinct contexts can reach ~10^14 in a real Java program (Dragon §12.6). You cannot have all sensitivities at full precision at scale, so every analysis fixes a point in that space.",
+        "Senior framing: the right mental model isn't 'find the exact answer' — it's a soundness / precision / cost *frontier*. Exactness is off the table (undecidable); soundness is non-negotiable (a wrong NoAlias is a miscompile); so the entire design space is choosing how much precision to buy at how much cost while staying sound. There is no single best answer, only a deliberately chosen point on that surface — and 'better' means more precision (fewer spurious MayAlias) per unit cost, never 'exact.'"
+      ],
+      interviewer_signal:"Tests whether the candidate understands the *fundamental* limits versus engineering limits, and can articulate them precisely. Red flags: saying it's 'just too slow' or 'too much memory' (confusing intractability/undecidability with mere cost); not knowing undecidability is the actual barrier; missing the call-graph/points-to circularity entirely; treating the answer as a single algorithm rather than a tradeoff space. A senior answer distinguishes undecidable (no exact answer ever) from intractable (cost) from lossy-by-construction (heap/array/recursion abstraction), names the joint-fixpoint circularity, and explicitly reframes the whole problem as navigating a soundness/precision/cost frontier rather than seeking a unique solution.",
+      grounding:"Lesson §5 (four pillars: undecidability, call-graph↔points-to, heap/array/recursion, scalability wall). Dragon §12.5.1 (mutual dependency quote), §12.6 (~10^14 contexts), §12.4.2 (alloc-site naming). Undecidability results (Landi 1992; Ramalingam 1994) are literature, framed informally in Dragon §12.4.1." },
+
+    { iqid:'tcl.ipa.pointer.iq5', theme:'implementation', level:'diagnose',
+      scenario:"Walk me through how you'd actually implement Andersen's analysis — the constraint solving. I specifically want to understand where the O(n³) comes from, and then how you'd make it fast enough to be usable in practice.",
+      probes:[
+        "Why can't you just emit all the constraints up front and solve once? What forces iteration?",
+        "Pin down the cubic bound for me — what are the three factors being multiplied?",
+        "Give me the single highest-leverage optimization to the solver and explain why it helps so much."
+      ],
+      model_answer:[
+        "Reduce the program to four canonical constraint forms over points-to sets pts(·): address-of `a=&b` ⇒ {b}⊆pts(a); copy `a=b` ⇒ pts(b)⊆pts(a); load `a=*b` ⇒ ∀o∈pts(b): pts(o)⊆pts(a); store `*a=b` ⇒ ∀o∈pts(a): pts(b)⊆pts(o). These are directional subset (inclusion) constraints; the answer is the least solution satisfying all of them.",
+        "Build a constraint/points-to graph: a node per variable/abstract object, a directed copy edge a←b for each `a=b` (meaning pts(b)⊆pts(a)). Initialize sets from address-of constraints, then propagate: push each node's points-to set along its out-edges (set-union into the successor). Iterate to fixpoint.",
+        "Why iteration and not one-shot: load/store constraints are *dynamic*. You can't materialize their copy edges up front because they're quantified over pts(b)/pts(a), which aren't known until solving. As a points-to set grows (e.g., a new object o enters pts(b)), a load `a=*b` must add a *new* edge o→a; a store similarly adds new edges. New edges propagate new facts, which can add more edges — so you re-process until nothing changes. That dynamic edge-addition is the heart of the solver.",
+        "Where O(n³) comes from (with n = number of nodes/variables): up to O(n²) constraint edges in the graph, and each points-to set can hold up to O(n) elements; propagating O(n)-sized sets across O(n²) edges (with re-propagation as sets grow) gives the cubic bound — it's a dynamic transitive-closure-with-set-union. Keep the bound defensible: O(n³) is the standard worst-case for the inclusion analysis; it's not always tight, and the constant/typical cost is far better with the speedups below.",
+        "Highest-leverage speedup: online cycle elimination. In the constraint graph, any cycle of copy edges forces all nodes in it to have *equal* points-to sets at fixpoint — so detect strongly-connected components (SCCs) of copy edges *as they form during solving* and collapse each SCC into a single representative node. This shrinks the graph dramatically and avoids re-propagating identical sets around the cycle. (Fähndrich et al. introduced online cycle detection; Hardekopf & Lin's work on cycle elimination / wave-difference propagation is the standard reference.)",
+        "Other real speedups: difference propagation (propagate only the *newly added* elements of a set across an edge, not the whole set each time — the 'wave'/'deep' propagation idea), worklist ordering by topological/least-recently-fired heuristics, HVN/HRU offline variable substitution (merge pointer-equivalent variables before solving), and BDD-based set representation (bddbddb / Whaley–Lam) to compress huge points-to relations. These cut the constant and graph size; they improve the *practical* cost and constant factor, not the asymptotic worst case.",
+        "Soundness caveat to state: SCC collapse on *copy* cycles is exact (cycle members provably share a points-to set), so it loses no precision — it's purely a speedup, not an approximation."
+      ],
+      interviewer_signal:"Tests genuine implementation depth versus textbook recall of 'Andersen is O(n³).' Red flags: not knowing load/store constraints add edges dynamically (claiming you can solve in one pass); hand-waving the cubic bound instead of naming the O(n²) edges × O(n) set-size structure; offering no concrete speedup, or claiming a speedup changes the asymptotic worst case when it changes the constant/typical cost; not realizing copy-cycle collapse is *precision-preserving*. A senior answer explains the dynamic-edge mechanism crisply, factors the cubic bound, names online cycle elimination as the headline optimization and *why* it's exact, and is careful to label which improvements touch the constant vs. the bound.",
+      grounding:"Lesson §3.1 (four constraint forms), §3.2 (constraint graph, dynamic edges, O(n³) intuition). Constraint forms also Dragon §12.4.4 (Datalog rules). Cubic bound, cycle elimination, difference propagation, HVN, BDDs are literature (Andersen 1994; Fähndrich et al. 1998; Hardekopf & Lin 2007; Whaley & Lam bddbddb) — NOT Dragon-body; treat exact bounds as standard worst-case, not tight." },
+
+    { iqid:'tcl.ipa.pointer.iq6', theme:'practical', level:'diagnose',
+      scenario:"Let's get concrete about LLVM. Explain how alias analysis actually interacts with SSA construction and with load/store optimization. Why does the front end even emit allocas and loads/stores for local variables instead of SSA values directly, and where does AA enter the picture?",
+      probes:[
+        "Which locals get promoted to SSA registers and which stay in memory — what's the deciding factor?",
+        "Once you're past mem2reg, name the optimizations that query AA on a load and what each does with a NoAlias vs MayAlias answer.",
+        "What's the difference between MayAlias and MustAlias to a consumer, and where does TBAA fit relative to a points-to analysis?"
+      ],
+      model_answer:[
+        "Why allocas first: SSA form requires each value to have a single definition, but a local whose address is taken (`&x`) can be mutated through that pointer from anywhere, so it can't be a simple SSA value at the front end. Clang/LLVM frontends emit every address-taken (and initially, every) local as an `alloca` plus explicit `load`/`store`, which is trivially correct, then let a pass promote the ones it safely can. This sidesteps needing alias info *during* initial IR generation.",
+        "mem2reg / SROA do the promotion. mem2reg promotes an alloca to SSA registers (inserting phi nodes) only when it's safe — essentially when the alloca's address does not escape and is only accessed by direct loads/stores of the whole slot (no aliasing pointer can reach it). SROA additionally splits aggregates and promotes the resulting scalar pieces. An alloca whose address escapes or is accessed through a may-aliasing pointer is *not* promoted and stays in memory. So the deciding factor is precisely 'can any aliasing access reach this slot' — promotion is gated on (a cheap form of) non-aliasing.",
+        "After SSA construction, AA gates the memory optimizers, all querying through the `AAResults`/`AliasAnalysis` interface: GVN / redundant-load elimination (can a later load reuse an earlier load's or store's value? legal only if no intervening store *may*-alias the pointer — needs NoAlias on the clobber candidates); DSE (is this store dead? only if no later may-aliasing load reads it before it's overwritten); LICM (hoist/sink a load out of a loop only if no store in the loop may-alias it); MemCpyOpt and the loop vectorizer similarly. A NoAlias answer enables the transform; a MayAlias answer blocks it.",
+        "The query returns one of NoAlias / MayAlias / PartialAlias / MustAlias. The may/must distinction matters to consumers: MayAlias forbids reordering (sound over-approximation — used for safety); MustAlias guarantees the same location (under-approximation — used to *enable*, e.g., forwarding a just-stored value to a later load only if the pointers MustAlias). PartialAlias means they overlap but aren't identical (e.g., different offsets into the same object) — also a 'cannot treat as independent' answer.",
+        "TBAA's place: it's one AA in LLVM's chained AA pipeline (alongside `basic-aa` for obviously-distinct objects, `globals-aa`, `scev-aa` for array subscripts, CFL-AA). TBAA uses the *source language's type rules*, encoded as `!tbaa` metadata on loads/stores, to assert NoAlias between type-incompatible accesses (e.g., `float*` vs `int*`) — *without* any points-to/flow analysis, and with the `char`/character-type escape hatch that may-aliases anything. It's complementary to a points-to analysis: TBAA disambiguates by type, points-to/`basic-aa` by object identity; the pipeline combines them, taking the most precise sound answer.",
+        "Tie to soundness (lesson §1, §6): every one of these transforms is legal only because AA proved independence; a wrong NoAlias here is a miscompile, and with TBAA the NoAlias is handed over by the language via strict-aliasing UB — which is exactly why type-punning bugs surface as -O2-only miscompiles."
+      ],
+      interviewer_signal:"Tests whether the candidate connects AA to the actual LLVM mid-end mechanics rather than discussing AA in the abstract. Red flags: not knowing why allocas/loads/stores are emitted before SSA (the address-taken/escape reason); thinking mem2reg promotes *all* locals unconditionally; not naming a single AA consumer or what it does with the result; conflating MayAlias and MustAlias, or thinking TBAA *is* the points-to analysis rather than a separate type-based AA in a pipeline. A senior answer ties promotion-eligibility to escape/aliasing, lists concrete consumers (GVN/DSE/LICM) with the NoAlias-vs-MayAlias decision each makes, correctly uses the four-valued result with may=safety/must=opportunity, and places TBAA as one complementary pass in the AA pipeline. Note: LLVM pass names and the AA pipeline composition are version-specific (new vs legacy pass manager, CFL-AA availability) — treat specifics as current-LLVM, not eternal.",
+      grounding:"Lesson §1 (AA gates DSE/RLE/GVN/mem2reg/LICM; may=safety/must=opportunity), §6 (AAResults four-valued result, AA pipeline `basic-aa`/CFL-AA/`globals-aa`/`scev-aa`/TBAA, `!tbaa` metadata, strict-aliasing). Dragon §12.4 (points-to/aliasing basis). LLVM specifics are doc-grounded and version-sensitive (pass-manager era, CFL-AA), not Dragon-body." }
+  ];
+
+  const reveals=[];
+
+  IQ.forEach((q,qi)=>{
+    const card=document.createElement('div');
+    card.className='ivcard';
+    const th=THEME[q.theme]||{label:q.theme.toUpperCase(),color:'var(--muted)'};
+    const probes=q.probes.map(p=>`<li>${fmt(p)}</li>`).join('');
+    const answer=q.model_answer.map(p=>`<li>${fmt(p)}</li>`).join('');
+    const revId='ivrev'+qi;
+    card.innerHTML=
+      `<span class="chip" style="color:${th.color};border-color:${th.color}">${esc(th.label)} <span class="lvl">· ${esc(q.level)}</span></span>`+
+      `<div class="scenario"><span class="quote" aria-hidden="true">“</span><span>${fmt(q.scenario)}</span></div>`+
+      `<div class="askedby">— how the interviewer opens</div>`+
+      `<div class="iv-probes">`+
+        `<div class="ph">Probes the interviewer will push <span class="kbdhint">(escalating follow-ups)</span></div>`+
+        `<ol>${probes}</ol>`+
+      `</div>`+
+      `<button class="btn primary reveal-btn" type="button" aria-expanded="false" aria-controls="${revId}">Reveal model answer</button>`+
+      `<div class="iv-reveal" id="${revId}" hidden>`+
+        `<div class="mhead">What a strong candidate hits</div>`+
+        `<div class="msub">ordered — the points the interviewer is listening for</div>`+
+        `<ol class="answer">${answer}</ol>`+
+        `<div class="iv-signal">`+
+          `<div class="sh">What the interviewer is testing</div>`+
+          `<div class="sbody">${fmt(q.interviewer_signal)}</div>`+
+        `</div>`+
+        `<div class="iv-ground"><b>Grounding:</b> ${fmt(q.grounding)}</div>`+
+      `</div>`;
+    const reveal=card.querySelector('.iv-reveal');
+    const btn=card.querySelector('.reveal-btn');
+    function setOpen(open){
+      reveal.hidden=!open;
+      btn.textContent=open?'Hide model answer':'Reveal model answer';
+      btn.setAttribute('aria-expanded',open?'true':'false');
+    }
+    btn.addEventListener('click',()=>setOpen(reveal.hidden));
+    reveals.push({setOpen,isOpen:()=>!reveal.hidden});
+    host.appendChild(card);
+  });
+
+  // expand / collapse all
+  const allBtn=document.getElementById('ivExpandAll');
+  if(allBtn){
+    allBtn.addEventListener('click',()=>{
+      const anyClosed=reveals.some(r=>!r.isOpen());
+      reveals.forEach(r=>r.setOpen(anyClosed));
+      allBtn.textContent=anyClosed?'Collapse all answers':'Expand all answers';
+    });
+  }
+})();
+
+</script>
+</body>
+</html>

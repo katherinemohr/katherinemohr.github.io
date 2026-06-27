@@ -1,0 +1,1442 @@
+---
+title: "Linux 6.8 Memory Management"
+render_with_liquid: false
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Linux Memory Manager, Bottom to Top — v6.8</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0A0E1A; --panel:#131C30; --panel-2:#0F1626; --text:#DCE6F2; --muted:#7E90AE;
+  --line:#27334D; --line-soft:#1C2740;
+  --cyan:#5BC8EC; --amber:#F0A93D; --green:#67CF8E; --rose:#E86C8A; --violet:#9D8DF1;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'Inter',system-ui,-apple-system,sans-serif;
+  --maxw:1180px; --readw:720px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{
+  margin:0; background:var(--ink); color:var(--text);
+  font-family:var(--sans); font-size:17px; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+/* selection */
+::selection{background:rgba(91,200,236,.28)}
+
+/* ---------- reading-progress bar ---------- */
+#progress{position:fixed;top:0;left:0;height:3px;width:0;z-index:60;
+  background:linear-gradient(90deg,var(--cyan),var(--violet));}
+
+/* ---------- hex address gutter (signature) ---------- */
+#gutter{position:fixed;top:0;left:0;width:118px;height:100vh;z-index:20;
+  border-right:1px solid var(--line-soft);
+  font-family:var(--mono);font-size:11px;color:#33425f;
+  padding-top:64px;overflow:hidden;pointer-events:none;
+  background:linear-gradient(180deg,rgba(15,22,38,.6),rgba(10,14,26,.6));}
+.gut-row{height:22px;display:flex;align-items:center;justify-content:flex-end;
+  padding-right:14px;letter-spacing:.02em;white-space:nowrap;}
+#gut-label{position:fixed;left:14px;top:50%;transform:translateY(-50%) rotate(180deg);
+  writing-mode:vertical-rl;font-family:var(--mono);font-size:11px;
+  letter-spacing:.32em;text-transform:uppercase;color:var(--cyan);opacity:.7;z-index:21;}
+@media (max-width:1080px){#gutter,#gut-label{display:none}}
+
+/* ---------- top nav ---------- */
+header.topbar{position:fixed;top:0;left:0;right:0;height:52px;z-index:50;
+  display:flex;align-items:center;gap:18px;padding:0 20px 0 138px;
+  background:rgba(10,14,26,.82);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line-soft);}
+@media(max-width:1080px){header.topbar{padding-left:20px}}
+.topbar .brand{font-family:var(--mono);font-weight:800;font-size:14px;letter-spacing:.01em;color:var(--text);}
+.topbar .brand b{color:var(--cyan)}
+.topbar .ver{font-family:var(--mono);font-size:11px;color:var(--muted);
+  border:1px solid var(--line);border-radius:4px;padding:2px 7px;}
+.topbar nav{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap}
+.topbar nav a{font-family:var(--mono);font-size:11.5px;color:var(--muted);
+  text-decoration:none;padding:5px 8px;border-radius:5px;}
+.topbar nav a:hover{color:var(--cyan);background:var(--line-soft)}
+@media(max-width:780px){.topbar nav{display:none}}
+
+/* ---------- layout container ---------- */
+main{max-width:var(--maxw);margin:0 auto;padding:0 28px 120px 158px;}
+@media(max-width:1080px){main{padding:0 24px 100px}}
+@media(max-width:560px){main{padding:0 16px 80px}}
+
+/* ---------- hero ---------- */
+.hero{padding:120px 0 56px;border-bottom:1px solid var(--line-soft);position:relative}
+.hero .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.28em;
+  text-transform:uppercase;color:var(--cyan);margin-bottom:22px;}
+.hero h1{font-family:var(--mono);font-weight:800;line-height:1.04;letter-spacing:-.02em;
+  font-size:clamp(34px,6vw,62px);margin:0 0 8px;color:var(--text);}
+.hero h1 .dim{color:var(--muted);font-weight:500}
+.hero .sub{max-width:640px;font-size:19px;color:#aeb9cf;margin:22px 0 0}
+.hero .sub b{color:var(--text);font-weight:600}
+.hero .meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:30px}
+.hero .meta span{font-family:var(--mono);font-size:11.5px;color:var(--muted);
+  border:1px solid var(--line);border-radius:6px;padding:6px 11px;}
+.hero .meta span b{color:var(--green);font-weight:700}
+
+/* stack-of-layers hero graphic */
+.stack{margin-top:48px;display:grid;gap:5px;max-width:560px}
+.stack .lyr{font-family:var(--mono);font-size:12.5px;display:flex;align-items:center;gap:12px;
+  padding:11px 16px;border:1px solid var(--line);border-radius:7px;background:var(--panel-2);
+  position:relative;transition:transform .25s ease,border-color .25s ease;}
+.stack .lyr:hover{transform:translateX(6px);border-color:var(--cyan)}
+.stack .lyr .ix{color:var(--muted);font-size:11px;width:54px}
+.stack .lyr .nm{color:var(--text);font-weight:500}
+.stack .lyr .ds{color:var(--muted);margin-left:auto;font-size:11px;font-family:var(--sans)}
+.stack .lyr[data-k="hw"]{border-left:3px solid var(--rose)}
+.stack .lyr[data-k="alloc"]{border-left:3px solid var(--amber)}
+.stack .lyr[data-k="virt"]{border-left:3px solid var(--cyan)}
+.stack .lyr[data-k="reclaim"]{border-left:3px solid var(--green)}
+@media(max-width:560px){.stack .lyr .ds{display:none}}
+
+/* ---------- sections ---------- */
+section.section{padding:64px 0 8px;scroll-margin-top:64px}
+.sec-head{display:flex;align-items:baseline;gap:16px;margin-bottom:8px}
+.sec-num{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan);
+  border:1px solid var(--line);border-radius:6px;padding:4px 9px;flex:none}
+.sec-head h2{font-family:var(--mono);font-weight:800;letter-spacing:-.01em;
+  font-size:clamp(23px,3.4vw,33px);margin:0;line-height:1.12}
+.sec-kicker{color:var(--muted);font-size:15px;margin:6px 0 30px;max-width:var(--readw)}
+
+.prose{max-width:var(--readw)}
+.prose p{margin:0 0 18px}
+.prose h3{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--text);
+  margin:34px 0 12px;letter-spacing:0;}
+.prose h3::before{content:"› ";color:var(--cyan)}
+.prose ul{margin:0 0 18px;padding-left:0;list-style:none}
+.prose ul li{position:relative;padding-left:22px;margin-bottom:11px}
+.prose ul li::before{content:"";position:absolute;left:4px;top:11px;width:6px;height:6px;
+  border-radius:1px;background:var(--line);transform:rotate(45deg)}
+.prose b,.prose strong{color:#fff;font-weight:600}
+code{font-family:var(--mono);font-size:.86em;background:var(--line-soft);
+  color:#bfe6f4;padding:1.5px 5px;border-radius:4px;border:1px solid var(--line-soft)}
+.prose a{color:var(--cyan);text-decoration:none;border-bottom:1px solid rgba(91,200,236,.3)}
+.prose a:hover{border-bottom-color:var(--cyan)}
+
+/* callout */
+.note{max-width:var(--readw);border:1px solid var(--line);border-left:3px solid var(--violet);
+  background:var(--panel-2);border-radius:8px;padding:16px 18px;margin:24px 0;font-size:15.5px}
+.note .tag{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--violet);display:block;margin-bottom:7px}
+
+/* ---------- figure / widget shell ---------- */
+.fig{margin:34px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);
+  overflow:hidden}
+.fig-head{display:flex;align-items:center;gap:10px;padding:13px 18px;
+  border-bottom:1px solid var(--line-soft);background:var(--panel-2)}
+.fig-head .dot{width:9px;height:9px;border-radius:50%;background:var(--cyan);flex:none;
+  box-shadow:0 0 0 3px rgba(91,200,236,.15)}
+.fig-head .t{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text)}
+.fig-head .lbl{margin-left:auto;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--muted)}
+.fig-body{padding:22px 20px}
+.fig-cap{font-size:13.5px;color:var(--muted);padding:0 20px 18px;max-width:640px}
+
+/* generic controls */
+.btn{font-family:var(--mono);font-size:12.5px;font-weight:500;cursor:pointer;
+  background:var(--panel-2);color:var(--text);border:1px solid var(--line);
+  border-radius:7px;padding:8px 13px;transition:all .15s ease}
+.btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:rgba(91,200,236,.12);border-color:var(--cyan);color:var(--cyan)}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.ctrls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:18px}
+.ctrls .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+.readout{font-family:var(--mono);font-size:12px;color:var(--muted);min-height:18px}
+.readout b{color:var(--green)}
+
+/* ---------- buddy allocator ---------- */
+#buddy-strip{display:flex;gap:3px;width:100%;height:74px;margin-bottom:6px}
+.bk{position:relative;border-radius:5px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;
+  border:1px solid var(--line);cursor:default;transition:all .3s cubic-bezier(.2,.7,.3,1);
+  min-width:0;overflow:hidden}
+.bk.free{background:repeating-linear-gradient(45deg,#10192b,#10192b 6px,#0d1422 6px,#0d1422 12px);
+  color:var(--muted);border-color:var(--line)}
+.bk.alloc{cursor:pointer;color:#06121b;font-weight:700}
+.bk.alloc:hover{filter:brightness(1.12);box-shadow:0 0 0 2px rgba(255,255,255,.25) inset}
+.bk .ord{font-size:10px;opacity:.85}
+.bk .sz{font-size:9px;opacity:.7}
+.bk.flash{animation:bkflash .5s ease}
+@keyframes bkflash{0%{box-shadow:0 0 0 3px var(--cyan)}100%{box-shadow:none}}
+#buddy-axis{display:flex;justify-content:space-between;font-family:var(--mono);
+  font-size:10px;color:#3b4a68;margin-top:2px}
+.freelist{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:20px}
+.fl-cell{border:1px solid var(--line-soft);border-radius:7px;padding:10px;text-align:center;background:var(--panel-2)}
+.fl-cell .o{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.fl-cell .c{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--cyan);margin-top:3px}
+.fl-cell .c.zero{color:#3b4a68}
+.fl-cell .b{font-size:9px;color:#4a5a78;font-family:var(--mono)}
+
+/* ---------- zone map ---------- */
+.zonemap{display:flex;flex-direction:column;gap:10px}
+.numa-node{border:1px solid var(--line);border-radius:9px;padding:14px;background:var(--panel-2)}
+.numa-node .nh{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:10px;display:flex;gap:8px;align-items:center}
+.numa-node .nh b{color:var(--text)}
+.zone-row{display:flex;gap:5px;height:46px}
+.zone{flex:none;border-radius:6px;display:flex;flex-direction:column;justify-content:center;
+  padding:0 12px;font-family:var(--mono);font-size:11px;border:1px solid transparent;
+  cursor:default;transition:transform .15s ease}
+.zone:hover{transform:translateY(-2px)}
+.zone .zn{font-weight:700;color:#06121b}
+.zone .za{font-size:9px;opacity:.75;color:#06121b}
+.z-dma{background:var(--rose);width:8%}
+.z-dma32{background:var(--amber);width:22%}
+.z-normal{background:var(--green);flex:1}
+.z-movable{background:var(--cyan);width:24%}
+.z-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.z-legend span{display:flex;align-items:center;gap:6px}
+.z-legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+/* ---------- page table walk ---------- */
+.ptw-input{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+.ptw-input label{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.ptw-input input{font-family:var(--mono);font-size:15px;background:var(--panel-2);
+  border:1px solid var(--line);color:var(--cyan);border-radius:7px;padding:9px 12px;width:230px}
+.bits{display:flex;gap:3px;margin-bottom:22px;flex-wrap:wrap}
+.bitseg{flex:1;min-width:64px;border-radius:7px;padding:9px 8px;text-align:center;font-family:var(--mono)}
+.bitseg .nm{font-size:10px;letter-spacing:.08em;opacity:.85}
+.bitseg .bn{font-size:13px;font-weight:700;margin-top:4px;word-break:break-all}
+.bitseg .dx{font-size:10px;opacity:.7;margin-top:3px}
+.bs-pgd{background:rgba(157,141,241,.16);border:1px solid var(--violet);color:var(--violet)}
+.bs-pud{background:rgba(91,200,236,.14);border:1px solid var(--cyan);color:var(--cyan)}
+.bs-pmd{background:rgba(103,207,142,.14);border:1px solid var(--green);color:var(--green)}
+.bs-pte{background:rgba(240,169,61,.14);border:1px solid var(--amber);color:var(--amber)}
+.bs-off{background:rgba(232,108,138,.14);border:1px solid var(--rose);color:var(--rose)}
+.ptw-walk{display:flex;align-items:stretch;gap:0;flex-wrap:wrap}
+.ptw-lvl{flex:1;min-width:96px;border:1px solid var(--line);border-radius:9px;padding:13px 11px;
+  background:var(--panel-2);text-align:center;opacity:.45;transition:all .35s ease;position:relative}
+.ptw-lvl.on{opacity:1;border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan)}
+.ptw-lvl.done{opacity:.85}
+.ptw-lvl .lv{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text)}
+.ptw-lvl .lo{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px}
+.ptw-lvl .li{font-family:var(--mono);font-size:11px;color:var(--cyan);margin-top:8px;
+  border-top:1px dashed var(--line);padding-top:7px}
+.ptw-arrow{display:flex;align-items:center;color:#3b4a68;font-family:var(--mono);padding:0 5px}
+@media(max-width:680px){.ptw-arrow{display:none}.ptw-lvl{min-width:46%}}
+
+/* ---------- watermarks ---------- */
+.wm-wrap{display:grid;grid-template-columns:130px 1fr;gap:24px;align-items:center}
+@media(max-width:560px){.wm-wrap{grid-template-columns:90px 1fr}}
+.wm-gauge{position:relative;height:230px;border:1px solid var(--line);border-radius:9px;
+  background:linear-gradient(180deg,#0d1422,#101a2c);overflow:hidden}
+.wm-fill{position:absolute;left:0;right:0;bottom:0;
+  background:linear-gradient(180deg,var(--cyan),#2d6f8c);transition:height .5s cubic-bezier(.2,.7,.3,1);
+  border-top:2px solid #9fe2f6}
+.wm-line{position:absolute;left:0;right:0;height:0;border-top:1px dashed;font-family:var(--mono);font-size:9.5px}
+.wm-line span{position:absolute;right:6px;top:-13px;padding:0 4px;background:var(--panel-2);border-radius:3px}
+.wm-line.min{border-color:var(--rose);color:var(--rose)}
+.wm-line.low{border-color:var(--amber);color:var(--amber)}
+.wm-line.high{border-color:var(--green);color:var(--green)}
+.wm-state{font-family:var(--mono)}
+.wm-state .lvl{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.wm-state .nm{font-size:20px;font-weight:700;margin:6px 0 10px}
+.wm-state p{font-size:13.5px;color:var(--muted);font-family:var(--sans);margin:0 0 16px;max-width:380px}
+.wm-state input[type=range]{width:100%;accent-color:var(--cyan)}
+
+/* ---------- fault explorer ---------- */
+.fault-cases{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:20px}
+.fc-btn{font-family:var(--mono);font-size:12px;border:1px solid var(--line);background:var(--panel-2);
+  color:var(--muted);padding:8px 12px;border-radius:7px;cursor:pointer;transition:all .15s}
+.fc-btn:hover{color:var(--text);border-color:var(--cyan)}
+.fc-btn.on{background:rgba(91,200,236,.14);border-color:var(--cyan);color:var(--cyan)}
+.fault-out{border:1px solid var(--line);border-radius:9px;background:var(--panel-2);padding:18px;min-height:150px}
+.fault-out .badges{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.bdg{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;padding:4px 9px;border-radius:5px;font-weight:600}
+.bdg.minor{background:rgba(103,207,142,.16);color:var(--green);border:1px solid var(--green)}
+.bdg.major{background:rgba(240,169,61,.16);color:var(--amber);border:1px solid var(--amber)}
+.bdg.err{background:rgba(232,108,138,.16);color:var(--rose);border:1px solid var(--rose)}
+.fault-out h4{font-family:var(--mono);font-size:15px;margin:0 0 8px;color:var(--text)}
+.fault-out p{margin:0 0 12px;font-size:14.5px;color:#aeb9cf}
+.fault-steps{list-style:none;padding:0;margin:0;counter-reset:fs}
+.fault-steps li{position:relative;padding:6px 0 6px 30px;font-size:13.5px;color:var(--muted);
+  font-family:var(--mono);border-top:1px solid var(--line-soft)}
+.fault-steps li::before{counter-increment:fs;content:counter(fs);position:absolute;left:0;top:6px;
+  width:20px;height:20px;border-radius:5px;background:var(--line-soft);color:var(--cyan);
+  font-size:11px;display:flex;align-items:center;justify-content:center}
+
+/* ---------- compaction ---------- */
+.comp-zone{display:flex;gap:3px;height:54px;margin-bottom:8px}
+.cc{flex:1;border-radius:4px;border:1px solid var(--line);transition:all .55s cubic-bezier(.3,.7,.3,1);
+  display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:9px}
+.cc.free{background:repeating-linear-gradient(45deg,#10192b,#10192b 5px,#0d1422 5px,#0d1422 10px)}
+.cc.used{background:var(--cyan);color:#06121b;font-weight:700}
+.comp-scan{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px}
+
+/* ---------- life-of-allocation stepper ---------- */
+.life{display:grid;grid-template-columns:1fr;gap:0}
+.life-step{display:grid;grid-template-columns:42px 1fr;gap:16px;padding:16px 0;
+  border-top:1px solid var(--line-soft);opacity:.4;transition:opacity .3s}
+.life-step.on{opacity:1}
+.life-step.on .ls-num{background:var(--cyan);color:#06121b;border-color:var(--cyan)}
+.ls-num{width:42px;height:42px;border-radius:9px;border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-family:var(--mono);
+  font-weight:700;font-size:16px;color:var(--muted)}
+.ls-body h4{font-family:var(--mono);font-size:14px;margin:8px 0 6px;color:var(--text)}
+.ls-body p{margin:0;font-size:14px;color:#aeb9cf}
+.ls-body .tags{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+.ls-body .tags span{font-family:var(--mono);font-size:10px;color:var(--cyan);
+  border:1px solid var(--line);border-radius:4px;padding:2px 7px}
+
+/* tables for live interfaces */
+.iface{max-width:var(--readw);border:1px solid var(--line);border-radius:9px;overflow:hidden;margin:24px 0}
+.iface div.row{display:grid;grid-template-columns:200px 1fr;gap:0;border-top:1px solid var(--line-soft)}
+.iface div.row:first-child{border-top:none}
+.iface .k{font-family:var(--mono);font-size:12.5px;color:var(--cyan);padding:10px 14px;background:var(--panel-2)}
+.iface .v{font-size:13.5px;color:var(--muted);padding:10px 14px}
+@media(max-width:560px){.iface div.row{grid-template-columns:1fr}}
+
+/* footer */
+footer{max-width:var(--maxw);margin:60px auto 0;padding:34px 28px 60px 158px;
+  border-top:1px solid var(--line-soft);font-size:13.5px;color:var(--muted)}
+@media(max-width:1080px){footer{padding-left:28px}}
+footer b{color:var(--text)}
+footer code{font-size:.85em}
+
+.kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-bottom-width:2px;
+  border-radius:4px;padding:1px 6px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<aside id="gutter" aria-hidden="true"></aside>
+<div id="gut-label" aria-hidden="true">virtual address space</div>
+
+<header class="topbar">
+  <span class="brand">mm/<b>linux</b></span>
+  <span class="ver">v6.8</span>
+  <nav aria-label="Sections">
+    <a href="#s2">page</a><a href="#s3">zones</a><a href="#s4">boot</a>
+    <a href="#s5">buddy</a><a href="#s6">cache</a><a href="#s7">reclaim</a>
+    <a href="#s8">migrate</a><a href="#s9">tables</a><a href="#s10">faults</a>
+    <a href="#s11">life</a><a href="#s12">glossary</a>
+  </nav>
+</header>
+
+<main>
+  <!-- ============ HERO ============ -->
+  <div class="hero">
+    <div class="eyebrow">Understanding the Linux Virtual Memory Manager · refreshed for 6.8</div>
+    <h1>The memory manager,<br><span class="dim">bottom to top.</span></h1>
+    <p class="sub">From a single 4&nbsp;KiB physical frame up to a process's virtual address space — how Linux
+      <b>finds</b>, <b>tracks</b>, <b>protects</b>, and <b>reclaims</b> every page of memory. Grounded in Mel Gorman's
+      classic, but every structure here reflects the <b>v6.8 source tree</b>: folios, the maple tree, MGLRU,
+      5-level paging, <code>memblock</code>.</p>
+    <div class="meta">
+      <span>arch <b>x86-64</b></span>
+      <span>page size <b>4 KiB</b></span>
+      <span>released <b>Mar 2024</b></span>
+      <span>audience <b>undergrad OS</b></span>
+    </div>
+
+    <div class="stack" id="hero-stack">
+      <div class="lyr" data-k="virt"><span class="ix">§9–10</span><span class="nm">page tables · VMAs · faults</span><span class="ds">the virtual view</span></div>
+      <div class="lyr" data-k="reclaim"><span class="ix">§6–8</span><span class="nm">page cache · reclaim · migration</span><span class="ds">what stays resident</span></div>
+      <div class="lyr" data-k="alloc"><span class="ix">§5</span><span class="nm">buddy allocator · GFP · watermarks</span><span class="ds">handing out frames</span></div>
+      <div class="lyr" data-k="hw"><span class="ix">§2–4</span><span class="nm">struct page · zones · nodes · boot</span><span class="ds">the physical model</span></div>
+    </div>
+  </div>
+
+  <!-- ============ 1. ORIENTATION ============ -->
+  <section class="section" id="s1">
+    <div class="sec-head"><span class="sec-num">01</span><h2>Orientation</h2></div>
+    <p class="sec-kicker">"Memory management" in Linux is really several cooperating subsystems stacked on each other. Fix the vocabulary before diving in.</p>
+    <div class="prose">
+      <p>The stack above is the whole guide in miniature. Read it from the hardware up:</p>
+      <h3>Physical page frames</h3>
+      <p>The smallest unit the kernel allocates is a hardware page, almost always <b>4 KiB</b> on x86-64
+        (<code>PAGE_SIZE</code>, <code>PAGE_SHIFT == 12</code>). Every frame is described by a <code>struct page</code>,
+        increasingly grouped into a <code>struct folio</code>. The kernel keeps an array of these descriptors so it can
+        map a <b>physical frame number</b> (PFN) to its metadata in O(1).</p>
+      <h3>The physical allocator (buddy system)</h3>
+      <p>Frames are handed out by the <b>buddy allocator</b>, which manages free memory in power-of-two blocks
+        ("orders") per zone. It is the lowest-level allocator; SLUB, <code>vmalloc</code>, the page cache, and user
+        page faults all ultimately call into it.</p>
+      <h3>Zones and nodes</h3>
+      <p>Physical memory is partitioned first by <b>NUMA node</b> (a <code>pglist_data</code>) and within each node by
+        <b>zone</b> (<code>ZONE_DMA</code>, <code>ZONE_DMA32</code>, <code>ZONE_NORMAL</code>, <code>ZONE_MOVABLE</code>,
+        <code>ZONE_DEVICE</code>). Zones exist because not all physical memory is interchangeable.</p>
+      <h3>Virtual memory, page cache, and reclaim</h3>
+      <p>Each process has an address space (<code>mm_struct</code>), a set of regions (<code>vm_area_struct</code>s indexed
+        by a <b>maple tree</b>), and a hierarchical <b>page table</b>. The <b>page cache</b> caches file contents;
+        <b>reclaim</b> (<code>kswapd</code>, direct reclaim, the LRU lists / MGLRU) decides what to evict under pressure.</p>
+    </div>
+    <div class="note">
+      <span class="tag">The mental model that stays accurate</span>
+      The buddy allocator <b>owns free physical frames</b>; zones and nodes describe <b>where those frames are and what
+      they're good for</b>; page tables describe <b>where frames are virtually visible</b>; and the page cache plus
+      reclaim decide <b>what gets to stay resident</b>.
+    </div>
+  </section>
+
+  <!-- ============ 2. PHYSICAL MODEL ============ -->
+  <section class="section" id="s2">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Pages, folios, and <span style="color:var(--cyan)">mem_map</span></h2></div>
+    <p class="sec-kicker">Every physical frame the kernel manages has a tiny descriptor. How that descriptor array is laid out is the memory model.</p>
+    <div class="prose">
+      <h3>struct page</h3>
+      <p>Defined in <code>include/linux/mm_types.h</code>, this descriptor is deliberately tiny — on the order of
+        <b>64 bytes</b> — because there is one for <i>every</i> frame, and on a large machine that array can consume a
+        meaningful fraction of RAM. To stay small, <code>struct page</code> is heavily <b>unionized</b>: the same bytes
+        mean different things depending on what the frame is being used for (a buddy free block, page-cache page, slab
+        page, anonymous page, page-table page). Durable fields are <code>flags</code>, <code>_refcount</code>,
+        <code>_mapcount</code>; much of the rest is overlaid context.</p>
+      <p>The <code>flags</code> field is a packed bitfield holding both true flags (<code>PG_locked</code>,
+        <code>PG_dirty</code>, <code>PG_uptodate</code>, <code>PG_lru</code>, …) and, in its high bits, the encoded
+        <b>node id, zone number, and section</b> — which is how <code>page_to_nid()</code> and <code>page_zonenum()</code>
+        work without a separate lookup.</p>
+      <h3>Folios — the major change since the book</h3>
+      <p>The single biggest structural change in recent years is the <b>folio</b>. A folio is a container for one or more
+        <i>physically contiguous</i> pages managed as a unit, guaranteed never to be a "tail" page of a compound page.
+        It makes the head-vs-tail distinction explicit in the type system (killing a class of bugs) and lets the kernel
+        manage memory in chunks larger than 4 KiB.</p>
+    </div>
+    <div class="note">
+      <span class="tag">Keep this distinction</span>
+      Think of the <b>folio as the new unit of memory management</b>, and the <b>page as the unit of hardware
+      addressing</b>. A folio of order 0 is just one page; higher-order folios back large folios in the page cache and
+      transparent huge pages.
+    </div>
+    <div class="prose">
+      <h3>Mapping a PFN to its descriptor — the memory model</h3>
+      <ul>
+        <li><b>FLATMEM</b> — a single contiguous <code>mem_map[]</code>. Simple; used on small/embedded systems.</li>
+        <li><b>SPARSEMEM_VMEMMAP</b> — the default on x86-64. Memory is divided into fixed-size <b>sections</b> so address
+          spaces with large holes don't waste a descriptor per absent frame, and it maps a <i>virtual</i> array
+          (<code>vmemmap</code>) so <code>pfn_to_page()</code> reduces to pointer arithmetic. FLATMEM's O(1) access with
+          SPARSEMEM's tolerance of holes.</li>
+      </ul>
+      <p>The accessors — <code>pfn_to_page()</code>, <code>page_to_pfn()</code>, <code>virt_to_page()</code> — are stable
+        across all models; only the implementation underneath changes. (<code>DISCONTIGMEM</code> from the book era has
+        been removed entirely.)</p>
+    </div>
+  </section>
+
+  <!-- ============ 3. ZONES & NUMA ============ -->
+  <section class="section" id="s3">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Zones and NUMA nodes</h2></div>
+    <p class="sec-kicker">Memory is partitioned by node (where it physically lives) and by zone (what it's good for).</p>
+
+    <div class="fig">
+      <div class="fig-head"><span class="dot"></span><span class="t">Physical memory map</span><span class="lbl">hover a zone</span></div>
+      <div class="fig-body">
+        <div class="zonemap" id="zonemap">
+          <div class="numa-node">
+            <div class="nh">node <b>0</b> · <code>pglist_data</code> · local to CPUs 0–7</div>
+            <div class="zone-row">
+              <div class="zone z-dma"><span class="zn">DMA</span><span class="za">&lt;16M</span></div>
+              <div class="zone z-dma32"><span class="zn">DMA32</span><span class="za">&lt;4G</span></div>
+              <div class="zone z-normal"><span class="zn">NORMAL</span><span class="za">the workhorse</span></div>
+              <div class="zone z-movable"><span class="zn">MOVABLE</span><span class="za">migratable only</span></div>
+            </div>
+          </div>
+          <div class="numa-node">
+            <div class="nh">node <b>1</b> · <code>pglist_data</code> · remote across UPI/Infinity Fabric</div>
+            <div class="zone-row">
+              <div class="zone z-normal"><span class="zn">NORMAL</span><span class="za">bulk of RAM</span></div>
+              <div class="zone z-movable"><span class="zn">MOVABLE</span><span class="za">migratable only</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="z-legend">
+          <span><i style="background:var(--rose)"></i>DMA — ancient 16 MiB devices</span>
+          <span><i style="background:var(--amber)"></i>DMA32 — 32-bit DMA mask (&lt;4 GiB)</span>
+          <span><i style="background:var(--green)"></i>NORMAL — directly mapped, any purpose</span>
+          <span><i style="background:var(--cyan)"></i>MOVABLE — hot-unplug & huge pages</span>
+        </div>
+      </div>
+      <div class="fig-cap">Each node owns its zones in address order. <code>ZONE_DEVICE</code> (PMEM, GPU memory) isn't
+        normal RAM and sits outside the buddy pools. <code>ZONE_HIGHMEM</code> is effectively dead on 64-bit — all
+        physical RAM fits in the kernel's direct map.</div>
+    </div>
+
+    <div class="prose">
+      <h3>Why nodes exist: NUMA</h3>
+      <p>On a <b>Non-Uniform Memory Access</b> machine, a CPU reaches memory on its own socket (its <b>local node</b>)
+        faster than memory on another socket (a <b>remote node</b>). Linux models each domain as a node
+        (<code>struct pglist_data</code>). A single-socket machine is just the degenerate one-node case. In 6.8 the
+        <b>LRU lists and most reclaim accounting live at the node level</b>, in the node's <code>lruvec</code> — and with
+        the memory controller enabled, there is one <code>lruvec</code> <i>per memory cgroup per node</i>.</p>
+      <h3>Why zones exist: addressing & migratability</h3>
+      <p>Within a node, not all frames are interchangeable. <code>ZONE_MOVABLE</code> contains only frames the kernel
+        promises are migratable — which is what makes <b>memory hot-unplug</b> and reliable huge-page allocation
+        possible. Its size is set administratively (<code>kernelcore=</code> / <code>movablecore=</code>).</p>
+      <h3>Zonelists & NUMA policy</h3>
+      <p>When code requests memory it names a preferred zone (via GFP flags) and node (usually local). The allocator must
+        <b>fall back</b> when that zone is empty — that order is precomputed into each node's <b>zonelists</b>. There are two per node:
+        <code>ZONELIST_FALLBACK</code> (all nodes' zones, when remote memory is allowed) and
+        <code>ZONELIST_NOFALLBACK</code> (this node only, for <code>__GFP_THISNODE</code>). Default <b>node ordering</b>
+        exhausts the local node's zones before stepping to the nearest remote node, using ACPI <b>SLIT</b> distances. On
+        top sits NUMA <b>memory policy</b>: <code>MPOL_DEFAULT</code>, <code>MPOL_BIND</code>,
+        <code>MPOL_PREFERRED</code>, <code>MPOL_INTERLEAVE</code>, and <code>MPOL_PREFERRED_MANY</code> — set via
+        <code>set_mempolicy()</code>/<code>mbind()</code> and visible through <code>numactl</code>.</p>
+    </div>
+  </section>
+
+  <!-- ============ 4. BOOT ============ -->
+  <section class="section" id="s4">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Boot-time bootstrap</h2></div>
+    <p class="sec-kicker">A paradox: the buddy allocator and the struct page array are themselves data structures that must be allocated in memory — before the allocator that would allocate them exists.</p>
+    <div class="prose">
+      <p>Linux resolves it with a four-step handover. Each step builds the tool the next one needs:</p>
+    </div>
+
+    <div class="fig">
+      <div class="fig-head"><span class="dot"></span><span class="t">From firmware to the buddy allocator</span><span class="lbl">boot sequence</span></div>
+      <div class="fig-body">
+        <div class="life" id="boot-life">
+          <div class="life-step on"><div class="ls-num">1</div><div class="ls-body">
+            <h4>Discover the physical map</h4>
+            <p>The kernel can't probe RAM by poking addresses — it asks firmware. Legacy BIOS gives the <b>e820 map</b>
+              (<code>base, length, type</code> triples); UEFI gives the <b>EFI memory map</b>. Only ranges marked usable
+              become candidate RAM.</p>
+            <div class="tags"><span>arch/x86/kernel/e820.c</span><span>EFI stub</span></div>
+          </div></div>
+          <div class="life-step on"><div class="ls-num">2</div><div class="ls-body">
+            <h4>Record it in <code>memblock</code></h4>
+            <p>The boot-time allocator (<code>mm/memblock.c</code>, replacing the old <code>bootmem</code>) keeps two
+              arrays: <code>memblock.memory</code> (all RAM) and <code>memblock.reserved</code> (kernel image, initrd,
+              early page tables). Deliberately simple — a linear list, no <code>struct page</code> dependency.</p>
+            <div class="tags"><span>memblock_add()</span><span>memblock_reserve()</span></div>
+          </div></div>
+          <div class="life-step on"><div class="ls-num">3</div><div class="ls-body">
+            <h4>Build the <code>struct page</code> array</h4>
+            <p>Parse ACPI <b>SRAT</b> (node affinity) and <b>SLIT</b> (distances), compute zone boundaries, then under
+              SPARSEMEM_VMEMMAP allocate physical backing for each present section's descriptors and map it into
+              <code>vmemmap</code>. This is the step that makes <code>pfn_to_page()</code> work.</p>
+            <div class="tags"><span>free_area_init()</span><span>memmap_init</span></div>
+          </div></div>
+          <div class="life-step on"><div class="ls-num">4</div><div class="ls-body">
+            <h4>Hand over to the buddy allocator</h4>
+            <p><code>memblock_free_all()</code> walks every region in <code>memblock.memory</code> but not in
+              <code>.reserved</code> and releases those frames into the buddy free lists by clearing <code>PG_reserved</code>.
+              Watermarks are computed, PCP lists set up, and <code>memblock</code> is retired.</p>
+            <div class="tags"><span>__free_pages_core</span><span>mem_init()</span></div>
+          </div></div>
+        </div>
+      </div>
+      <div class="fig-cap">After this, allocations go through the normal <code>alloc_pages()</code> path. The command line
+        can still steer the result: <code>mem=</code>, <code>memmap=</code>, <code>numa=</code>,
+        <code>movablecore=</code>, <code>hugepages=</code>.</div>
+    </div>
+  </section>
+
+  <!-- ============ 5. BUDDY ALLOCATOR ============ -->
+  <section class="section" id="s5">
+    <div class="sec-head"><span class="sec-num">05</span><h2>The buddy allocator</h2></div>
+    <p class="sec-kicker">The kernel's physical page allocator. Within each zone it keeps, for every order k, a list of free blocks of exactly 2ᵏ contiguous, aligned pages.</p>
+
+    <div class="fig">
+      <div class="fig-head"><span class="dot"></span><span class="t">Live buddy allocator</span><span class="lbl">16 frames · order 0–4</span></div>
+      <div class="fig-body">
+        <div class="ctrls">
+          <button class="btn primary" data-alloc="0">alloc order 0 <span style="opacity:.6">1 pg</span></button>
+          <button class="btn primary" data-alloc="1">order 1 <span style="opacity:.6">2 pg</span></button>
+          <button class="btn primary" data-alloc="2">order 2 <span style="opacity:.6">4 pg</span></button>
+          <button class="btn primary" data-alloc="3">order 3 <span style="opacity:.6">8 pg</span></button>
+          <span class="sep"></span>
+          <button class="btn ghost" id="buddy-reset">reset zone</button>
+        </div>
+        <div id="buddy-strip" aria-label="buddy free-block layout"></div>
+        <div id="buddy-axis"><span>PFN 0</span><span>buddy = p XOR (1&lt;&lt;order)</span><span>PFN 15</span></div>
+        <div class="readout" id="buddy-log" style="margin-top:14px">Click <b>alloc</b> to split a block. Click any solid block to free it and watch buddies coalesce.</div>
+        <div class="freelist" id="buddy-freelist"></div>
+      </div>
+      <div class="fig-cap"><b>Allocation by splitting:</b> a request for order k with only a larger block free repeatedly
+        halves it, depositing the unused buddy halves on lower free lists. <b>Freeing by coalescing:</b> when a block is
+        freed, if its buddy (<code>p XOR (1&lt;&lt;k)</code>) is also free and the same order, the two merge upward.
+        This is a 16-frame teaching model; a real x86-64 zone runs to <code>MAX_PAGE_ORDER</code> 10 — a 1024-page,
+        4 MiB largest block — and splits free lists per migratetype.</div>
+    </div>
+
+    <div class="prose">
+      <h3>Migratetypes & anti-fragmentation</h3>
+      <p>A pure buddy system still fragments: one unmovable allocation stranded in a free region prevents it from ever
+        coalescing. Linux groups free lists <i>per migratetype</i>, one per <b>pageblock</b> (typically the PMD huge-page
+        order — 2 MiB — when huge pages are configured in): <code>MIGRATE_UNMOVABLE</code>,
+        <code>MIGRATE_MOVABLE</code>, <code>MIGRATE_RECLAIMABLE</code>, <code>MIGRATE_HIGHATOMIC</code>,
+        <code>MIGRATE_CMA</code>, <code>MIGRATE_ISOLATE</code> — so unmovable allocations cluster together and movable
+        regions stay contiguous, compactable into huge pages or freeable for hot-unplug. When a zone runs low on a type
+        it <b>steals</b> whole pageblocks from another by a fixed fallback order.</p>
+    </div>
+
+    <div class="fig">
+      <div class="fig-head"><span class="dot"></span><span class="t">GFP flags — what you can tolerate</span><span class="lbl">the allocation contract</span></div>
+      <div class="fig-body">
+        <div class="iface" style="margin:0">
+          <div class="row"><div class="k">GFP_KERNEL</div><div class="v">Process context. May sleep, do I/O & writeback, trigger direct reclaim and the OOM killer. The flexible "I can wait" request.</div></div>
+          <div class="row"><div class="k">GFP_ATOMIC</div><div class="v">Cannot sleep (IRQ handlers, holding a spinlock). May <b>not</b> reclaim, but may dip into emergency reserves below the low watermark.</div></div>
+          <div class="row"><div class="k">GFP_NOWAIT</div><div class="v">Like atomic, but without reserve access — fails fast rather than blocking.</div></div>
+          <div class="row"><div class="k">GFP_NOFS / NOIO</div><div class="v">May sleep, but must not recurse into the filesystem / any I/O. Avoids deadlock when the caller is itself in the writeback path.</div></div>
+          <div class="row"><div class="k">GFP_HIGHUSER_MOVABLE</div><div class="v">User-backing pages, marked movable so they land in movable pageblocks.</div></div>
+        </div>
+      </div>
+      <div class="fig-cap">Single-bit modifiers refine the request: <code>__GFP_ZERO</code>, <code>__GFP_MOVABLE</code>,
+        <code>__GFP_THISNODE</code>, <code>__GFP_RETRY_MAYFAIL</code>, <code>__GFP_NOFAIL</code>.</div>
+    </div>
+
+    <h3 style="font-family:var(--mono);font-size:16px;max-width:var(--readw);margin:38px 0 6px"><span style="color:var(--cyan)">›</span> Watermarks & the reclaim control loop</h3>
+    <p class="sec-kicker" style="margin-bottom:18px">Each zone carries three watermarks scaled from its managed page count. They form the feedback loop that drives reclaim.</p>
+
+    <div class="fig">
+      <div class="fig-head"><span class="dot"></span><span class="t">Free-memory control loop</span><span class="lbl">drag the slider</span></div>
+      <div class="fig-body">
+        <div class="wm-wrap">
+          <div class="wm-gauge" id="wm-gauge">
+            <div class="wm-fill" id="wm-fill" style="height:70%"></div>
+            <div class="wm-line high" style="bottom:40%"><span>high 40%</span></div>
+            <div class="wm-line low"  style="bottom:25%"><span>low 25%</span></div>
+            <div class="wm-line min"  style="bottom:10%"><span>min 10%</span></div>
+          </div>
+          <div class="wm-state">
+            <div class="lvl">zone state</div>
+            <div class="nm" id="wm-name">Plenty</div>
+            <p id="wm-desc">Above the high watermark — memory is ample and nobody reclaims.</p>
+            <label style="font-family:var(--mono);font-size:11px;color:var(--muted)">free pages: <b id="wm-val" style="color:var(--cyan)">70%</b></label>
+            <input type="range" id="wm-slider" min="0" max="100" value="70" aria-label="free memory percentage">
+            <div style="margin-top:14px"><button class="btn" id="wm-sim">simulate allocation burst →</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="fig-cap"><b>Fast path</b> (<code>get_page_from_freelist</code>): walk the zonelist, check the watermark,
+        pull a block — for a single page, almost always from the lock-free <b>per-CPU page list</b>. <b>Slow path</b>
+        (<code>__alloc_pages_slowpath</code>) escalates: wake <code>kswapd</code> → lowered watermarks → direct
+        compaction → direct reclaim → OOM killer → <code>NULL</code>.</div>
+    </div>
+
+    <div class="prose">
+      <h3>Per-CPU page lists & the layers above</h3>
+      <p>Because single-page alloc/free is the hottest path, each zone keeps a per-CPU cache (<code>struct
+        per_cpu_pages</code>) so the common case avoids the zone lock and keeps just-freed pages cache-warm. Above the
+        buddy allocator sit <b>SLUB</b> (<code>kmalloc</code>, object caches for sub-page objects like inodes and
+        dentries — some reclaimable via <b>shrinkers</b>; SLUB is the only slab allocator left in 6.8, the older SLAB and
+        SLOB having been removed), <b>vmalloc</b> (large, virtually-contiguous but physically
+        scattered), and <b>alloc_pages / folio_alloc</b> for page-granular memory.</p>
+    </div>
+  </section>
+
+  <!-- ============ 6. PAGE CACHE ============ -->
+  <section class="section" id="s6">
+    <div class="sec-head"><span class="sec-num">06</span><h2>The page cache</h2></div>
+    <p class="sec-kicker">The modern "file buffer cache" — one unified cache of file contents, keyed by (file, offset), in folio-sized units.</p>
+    <div class="prose">
+      <p>Older Unix had a <i>separate</i> buffer cache for disk blocks and page cache for file contents, causing
+        double-caching. Modern Linux has <b>one unified page cache</b>; the old buffer cache survives only as a
+        <b>view</b> — <code>struct buffer_head</code> objects describe individual disk blocks <i>within</i> a cached folio.</p>
+      <h3>address_space — the core structure</h3>
+      <ul>
+        <li><code>i_pages</code> — an <b>XArray</b> mapping page offsets to cached folios. It replaced the radix tree the
+          book describes, with a cleaner API, built-in locking, and inline <b>shadow/value entries</b> (used by refault
+          detection). This answers "is offset N of this file resident, and if so where?"</li>
+        <li><code>a_ops</code> — the operations vtable: <code>read_folio</code>, <code>writepages</code>,
+          <code>dirty_folio</code>, <code>migrate_folio</code> — how generic code calls into a specific filesystem.</li>
+        <li><code>host</code> — back-pointer to the owning inode; plus dirty/writeback tags stored as XArray marks.</li>
+      </ul>
+      <h3>Reads, readahead, and writeback</h3>
+      <p>On a read, the kernel indexes <code>mapping-&gt;i_pages</code>. A <b>hit</b> copies cached data — no I/O. A
+        <b>miss</b> allocates a folio, inserts it, and calls <code>read_folio</code>. On detecting sequential access the
+        kernel does <b>readahead</b>, growing a window of upcoming folios. A write copies into the folio and marks it
+        <b>dirty</b> (write-back caching). Persisting is the job of per-bdi <b>flusher threads</b> (<code>wb_workfn</code>; no longer the single
+        <code>pdflush</code> of the book era, so a slow disk can't stall a fast one), triggered by time
+        (<code>dirty_expire_centisecs</code>), by pressure (<code>dirty_background_ratio</code> /
+        <code>dirty_ratio</code>), or by <code>fsync</code>.
+        <code>balance_dirty_pages()</code> throttles fast writers so dirty memory can't grow unbounded.</p>
+    </div>
+    <div class="note">
+      <span class="tag">Why "free" memory is always small</span>
+      Page-cache folios are ordinary frames on the LRU lists. Clean cache pages are essentially <b>free memory the kernel
+      is borrowing</b> — they can be dropped instantly under pressure. That's why "free" memory on a healthy box is small
+      while "available" memory is large: most RAM is reclaimable page cache.
+    </div>
+  </section>
+
+  <!-- ============ 7. RECLAIM ============ -->
+  <section class="section" id="s7">
+    <div class="sec-head"><span class="sec-num">07</span><h2>Reclaim & the OPT ideal</h2></div>
+    <p class="sec-kicker">When memory is exhausted, the kernel must evict a resident page. Which one? Every real policy approximates an ideal it can never run.</p>
+    <div class="note">
+      <span class="tag">Don't conflate these</span>
+      <b>Reclaim</b> (this section) decides <i>which resident page to evict</i> to free a frame. <b>Migration</b>
+      (§8) <i>relocates a page's contents to a different frame</i> without evicting it. OPT belongs to the first.
+    </div>
+    <div class="prose">
+      <h3>The unreachable ideal — OPT / Belady</h3>
+      <p>The theoretically optimal choice is <b>OPT</b> (MIN / Belady's algorithm): evict the page whose <i>next</i> use
+        is furthest in the future. It provably minimizes faults — but is <b>unimplementable online</b> because it needs
+        the future reference stream. OPT is a <b>yardstick</b>. Every practical policy approximates it using the
+        <i>past</i> (recency and frequency), on the <b>locality</b> assumption that recently-used pages will be used soon.</p>
+      <p>The hardware gives only a weak signal: each PTE has an <b>accessed (A) bit</b> the CPU sets on reference and a
+        <b>dirty (D) bit</b> on write. No timestamps, no counts. All of Linux's reclaim cleverness extracts a good
+        recency estimate from those single bits sampled over time — the classic "clock"/"second chance" idea generalized.</p>
+    </div>
+
+    <div class="fig">
+      <div class="fig-head"><span class="dot"></span><span class="t">The two-list LRU</span><span class="lbl">active / inactive · anon / file</span></div>
+      <div class="fig-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div style="border:1px solid var(--line);border-radius:9px;padding:14px;background:var(--panel-2)">
+            <div style="font-family:var(--mono);font-size:12px;color:var(--green);margin-bottom:8px">ANON · costs a swap write</div>
+            <div style="display:flex;gap:8px"><div style="flex:1;border:1px solid var(--green);border-radius:6px;padding:8px;font-family:var(--mono);font-size:11px;text-align:center;color:var(--green)">ACTIVE<br><span style="opacity:.6">not scanned</span></div>
+            <div style="flex:1;border:1px dashed var(--line);border-radius:6px;padding:8px;font-family:var(--mono);font-size:11px;text-align:center;color:var(--muted)">INACTIVE<br><span style="opacity:.6">eviction end</span></div></div>
+          </div>
+          <div style="border:1px solid var(--line);border-radius:9px;padding:14px;background:var(--panel-2)">
+            <div style="font-family:var(--mono);font-size:12px;color:var(--cyan);margin-bottom:8px">FILE · may be free to drop</div>
+            <div style="display:flex;gap:8px"><div style="flex:1;border:1px solid var(--cyan);border-radius:6px;padding:8px;font-family:var(--mono);font-size:11px;text-align:center;color:var(--cyan)">ACTIVE<br><span style="opacity:.6">not scanned</span></div>
+            <div style="flex:1;border:1px dashed var(--line);border-radius:6px;padding:8px;font-family:var(--mono);font-size:11px;text-align:center;color:var(--muted)">INACTIVE<br><span style="opacity:.6">eviction end</span></div></div>
+          </div>
+        </div>
+        <div style="margin-top:12px;border:1px solid var(--rose);border-radius:9px;padding:11px 14px;background:rgba(232,108,138,.07);font-family:var(--mono);font-size:11.5px;color:var(--rose)">
+          LRU_UNEVICTABLE — <span style="color:#c9a7b4">kept off the scan entirely: <code style="color:var(--rose)">mlock</code>ed pages, <code style="color:var(--rose)">ramfs</code> (non-swap-backed), or otherwise pinned. Reclaim never wastes time scanning pages it can't free.</span>
+        </div>
+      </div>
+      <div class="fig-cap">Newly-referenced pages start <b>inactive</b>; referenced again, they're promoted to
+        <b>active</b> (not scanned until inactive is too small). Reclaim scans the cold end, consults the accessed bit via
+        the <b>reverse mapping</b>: referenced → second chance; not → evict (drop if clean, swap/write if dirty).
+        Separating anon from file matters because evicting a file page may be free while an anon page always costs a swap write.</div>
+    </div>
+
+    <div class="prose">
+      <h3>Reverse mapping (rmap)</h3>
+      <p>To evict a frame the kernel must unmap it from <b>every</b> address space that maps it — find all PTEs pointing
+        at it. <b>rmap</b> (<code>mm/rmap.c</code>) solves this: file pages via the <code>address_space</code> interval
+        tree of VMAs; anon pages via an <b>anon_vma</b> chaining the VMAs (including <code>fork</code> children). With
+        rmap, <code>try_to_unmap()</code> walks to each PTE, samples/clears the accessed bit, flushes the TLB, and
+        arranges writeback. It's also the foundation for migration.</p>
+      <h3>Refault detection & workingset</h3>
+      <p>A plain two-list LRU can <b>thrash</b>: it can't tell a one-off scan from a working set under pressure. On
+        eviction Linux leaves a <b>shadow entry</b> in the XArray recording <i>roughly when</i> (in LRU eviction
+        distance) the page left. If it's read back soon — a <b>refault</b> — the kernel compares the distance to the
+        active-list size to decide whether the page was wrongly evicted, and grows protection if so. The policy gains a
+        memory of its own recent mistakes.</p>
+      <h3>The multi-generational LRU (MGLRU)</h3>
+      <p>6.8 ships <b>MGLRU</b> (<code>CONFIG_LRU_GEN</code>), which can replace the active/inactive lists. Instead of two
+        levels it organizes each <code>lruvec</code> into multiple <b>generations</b> (up to 4): youngest holds recently
+        accessed pages, oldest is the eviction frontier. <b>Aging</b> advances the counter by scanning page tables —
+        using <code>lru_gen_look_around</code> to harvest accessed bits from <i>neighboring</i> PTEs cheaply — rather
+        than walking the global list with rmap per page. The win: far lower CPU cost to find cold pages on large
+        memories. Exposed via <code>/sys/kernel/mm/lru_gen/</code>.</p>
+    </div>
+    <div class="note">
+      <span class="tag">Either way, the same goal</span>
+      Classic two-list or MGLRU — both <b>cheaply approximate OPT by inferring future use from sampled recency and
+      frequency</b>. They differ only in how cheaply and how granularly they sample.
+    </div>
+    <div class="prose">
+      <h3>Who runs reclaim · swap · memcg · OOM</h3>
+      <p><code>kswapd</code> (one thread per node) wakes below the low watermark and reclaims to the high watermark in the
+        background. <b>Direct reclaim</b> runs inline in an allocating thread when the fast path fails — which is why a
+        starved allocation can block. <b>Swap</b> is what makes <i>anonymous</i> pages reclaimable: reclaim writes the
+        page to a swap slot and replaces its PTE with a not-present <b>swap entry</b> (<code>swp_entry_t</code>) encoding
+        the area+slot. <b>With no swap configured, anonymous pages are effectively unevictable</b> — the kernel can only
+        reclaim file pages and goes to the OOM killer sooner. The <code>swappiness</code> knob
+        (<code>/proc/sys/vm/swappiness</code>) tunes how aggressively the kernel prefers swapping anon vs. dropping file
+        pages. <b>memcg</b> (cgroup v2) scopes all of this per control group — <code>memory.max</code>, <code>memory.high</code>,
+        <code>memory.min</code> — which is exactly why <code>lruvec</code>s are per-(cgroup, node). Last resort: the
+        <b>OOM killer</b> picks a process by <code>oom_score</code> and kills it.</p>
+    </div>
+  </section>
+
+  <!-- ============ 8. MIGRATION & COMPACTION ============ -->
+  <section class="section" id="s8">
+    <div class="sec-head"><span class="sec-num">08</span><h2>Migration & compaction</h2></div>
+    <p class="sec-kicker">Migration relocates a page's contents to a different frame without evicting it. Compaction uses migration to manufacture contiguity.</p>
+    <div class="prose">
+      <h3>What migration is</h3>
+      <p><code>migrate_pages()</code> physically relocates a page while keeping it transparently usable: isolate from
+        the LRU, lock and <b>unmap from every mapping</b> via rmap, copy contents and flags to a fresh destination,
+        rewrite every PTE and the page-cache XArray entry, then free the old frame. Because every reference is found via
+        rmap and the page is locked throughout, the move is invisible to user space. Only <b>movable</b> pages qualify —
+        pinned kernel memory and <code>get_user_pages(FOLL_PIN)</code> pages cannot move, which is exactly why migratetype
+        segregation exists.</p>
+      <h3>What it's used for</h3>
+      <ul>
+        <li><b>Compaction</b> — defragmentation (below).</li>
+        <li><b>NUMA balancing</b> — moving a task's pages to the node where it runs.</li>
+        <li><b>Memory hot-unplug</b> — migrating every movable page off a bank before removal (the original reason
+          <code>ZONE_MOVABLE</code> exists).</li>
+        <li><b>CMA</b> — assembling a contiguous region for a device.</li>
+        <li><b>Tiered memory</b> — demoting cold pages to slower nodes (CXL/PMEM) instead of swapping, and
+          promoting hot pages back (the <code>WMARK_PROMO</code> watermark and NUMA-balancing paths participate).</li>
+      </ul>
+    </div>
+
+    <div class="fig">
+      <div class="fig-head"><span class="dot"></span><span class="t">Compaction — two scanners</span><span class="lbl">migration ↑ · free ↓</span></div>
+      <div class="fig-body">
+        <div class="ctrls">
+          <button class="btn primary" id="comp-run">compact zone →</button>
+          <button class="btn ghost" id="comp-reset">scatter again</button>
+        </div>
+        <div class="comp-zone" id="comp-zone"></div>
+        <div class="comp-scan"><span id="comp-mig">↑ migration scanner</span><span id="comp-free">free scanner ↓</span></div>
+        <div class="readout" id="comp-log" style="margin-top:12px">A <b>migration scanner</b> walks up collecting in-use movable pages; a <b>free scanner</b> walks down collecting free slots. Used pages sweep to one side, free space coalesces into large buddy blocks on the other.</div>
+      </div>
+      <div class="fig-cap">Invoked by <code>kcompactd</code> (per-node), directly from the allocator slow path when a
+        high-order request fails, and via <code>/proc/sys/vm/compact_memory</code>. This is the supply side that makes
+        transparent huge pages succeed on a fragmented system.</div>
+    </div>
+
+    <div class="prose">
+      <h3>Automatic NUMA balancing</h3>
+      <p>To improve locality without application awareness, the kernel periodically clears the present bit on a sample of
+        a task's pages so the next access <b>faults</b>. <code>do_numa_page</code> records which node the accessing CPU is
+        on; a page consistently accessed from a remote node is <b>migrated</b> toward it. "Sample by faulting, then
+        migrate" gradually co-locates each task with its working set, trading a few minor faults for better latency.</p>
+    </div>
+  </section>
+
+  <!-- ============ 9. PAGE TABLES ============ -->
+  <section class="section" id="s9">
+    <div class="sec-head"><span class="sec-num">09</span><h2>The page-table walk</h2></div>
+    <p class="sec-kicker">The MMU translates a virtual address by walking a multi-level tree of tables rooted in CR3. With 4 KiB pages: four levels (48-bit), or five with LA57 (57-bit).</p>
+
+    <div class="fig">
+      <div class="fig-head"><span class="dot"></span><span class="t">Translate a virtual address</span><span class="lbl">x86-64 · 4-level</span></div>
+      <div class="fig-body">
+        <div class="ptw-input">
+          <label for="ptw-va">virtual address 0x</label>
+          <input type="text" id="ptw-va" value="7F3C8A2B1450" spellcheck="false" aria-label="virtual address in hex">
+          <button class="btn" id="ptw-rand">random</button>
+          <button class="btn primary" id="ptw-step">step ▶</button>
+        </div>
+        <div class="bits" id="ptw-bits"></div>
+        <div class="ptw-walk" id="ptw-walk">
+          <div class="ptw-lvl on" data-l="0"><div class="lv">CR3</div><div class="lo">root register</div><div class="li" id="ptw-i0">holds PGD phys addr</div></div>
+          <div class="ptw-arrow">→</div>
+          <div class="ptw-lvl" data-l="1"><div class="lv">PGD</div><div class="lo">global dir</div><div class="li" id="ptw-i1">[ — ]</div></div>
+          <div class="ptw-arrow">→</div>
+          <div class="ptw-lvl" data-l="2"><div class="lv">PUD</div><div class="lo">upper dir</div><div class="li" id="ptw-i2">[ — ]</div></div>
+          <div class="ptw-arrow">→</div>
+          <div class="ptw-lvl" data-l="3"><div class="lv">PMD</div><div class="lo">middle dir</div><div class="li" id="ptw-i3">[ — ]</div></div>
+          <div class="ptw-arrow">→</div>
+          <div class="ptw-lvl" data-l="4"><div class="lv">PTE</div><div class="lo">leaf</div><div class="li" id="ptw-i4">[ — ]</div></div>
+          <div class="ptw-arrow">→</div>
+          <div class="ptw-lvl" data-l="5"><div class="lv">4 KiB</div><div class="lo">frame</div><div class="li" id="ptw-i5">+ offset</div></div>
+        </div>
+        <div class="readout" id="ptw-log" style="margin-top:16px">A 48-bit address slices into four 9-bit indices (512 entries × 8 bytes = one 4 KiB page each) plus a 12-bit offset. Press <b>step</b> to walk it.</div>
+      </div>
+      <div class="fig-cap">Each level's table is itself one physical page from the buddy allocator. The 5-level variant
+        inserts a <b>P4D</b> index between PGD and PUD and uses a 57-bit address.</div>
+    </div>
+
+    <div class="prose">
+      <h3>PTE bits</h3>
+      <p>Each 64-bit entry holds the next table's / final frame's physical address plus flags: <b>Present (P)</b> — clear
+        means any access faults (this is how demand paging, swap, and NUMA hinting work); <b>R/W</b> — read-only enforces
+        <b>copy-on-write</b>; <b>U/S</b>; <b>A</b> & <b>D</b> (set by hardware, sampled by reclaim); <b>PS</b> — at
+        PMD/PUD a leaf means a <b>huge page</b> (2 MiB / 1 GiB); <b>G</b> global; <b>NX</b> no-execute. Generic mm code
+        touches these only through accessors (<code>pte_present</code>, <code>pte_mkwrite</code>, <code>set_pte_at</code>),
+        so it runs unchanged on ARM64, RISC-V, etc.</p>
+      <h3>Folding · TLB · KPTI · huge pages</h3>
+      <p>Linux writes its mm code <i>once</i> against the five-level abstraction; on hardware with fewer levels, unused
+        upper levels <b>fold</b> away (their offset accessor returns its input). The <b>TLB</b> caches translations the
+        kernel can only invalidate — when it changes a cached entry it must flush it (<code>INVLPG</code> for one address,
+        or a full flush via CR3 reload), and on SMP perform a <b>shootdown</b>: an IPI to the other CPUs that ran the
+        <code>mm</code> (tracked in <code>mm_cpumask</code> so untouched CPUs aren't disturbed), waiting for all to
+        acknowledge. <b>PCID/ASID</b> tagging lets the hardware keep translations for several address spaces at once, so a
+        context switch needn't flush everything. After Meltdown, <b>KPTI</b> gives each process two PGDs (full
+        kernel mapping vs. a minimal user one). <b>Huge pages</b> make a PMD/PUD entry a leaf so one TLB entry covers
+        2 MiB / 1 GiB — via explicit <b>hugetlbfs</b> or automatic <b>THP</b> (with <code>khugepaged</code> collapsing
+        base pages). THP's supply depends entirely on compaction.</p>
+    </div>
+  </section>
+
+  <!-- ============ 10. FAULTS ============ -->
+  <section class="section" id="s10">
+    <div class="sec-head"><span class="sec-num">10</span><h2>VMAs & the page fault handler</h2></div>
+    <p class="sec-kicker">The page tables are the hardware's view. The kernel's view — and the fault handler that fills the tables lazily — is the connective tissue that ties every subsystem together.</p>
+    <div class="prose">
+      <h3>mm_struct and VMAs</h3>
+      <p>A process's address space is a <code>struct mm_struct</code> owning the page-table root and a set of
+        <b>regions</b>. Each region is a <code>vm_area_struct</code> (a <b>VMA</b>): a contiguous run of virtual addresses
+        with the same backing and permissions — program text, data, heap, an <code>mmap</code>ed file, the stack. In 6.8
+        the VMAs are indexed by a <b>maple tree</b> (replacing the rbtree + linked list). Crucially a VMA describes
+        <i>intent</i> and carries <b>no physical memory by itself</b> — frames and PTEs are created lazily, on fault.</p>
+    </div>
+
+    <div class="fig">
+      <div class="fig-head"><span class="dot"></span><span class="t">Page fault explorer</span><span class="lbl">pick a scenario</span></div>
+      <div class="fig-body">
+        <div class="fault-cases" id="fault-cases">
+          <button class="fc-btn on" data-f="zero">demand-zero (read)</button>
+          <button class="fc-btn" data-f="anon">anon write</button>
+          <button class="fc-btn" data-f="file">file-backed</button>
+          <button class="fc-btn" data-f="cow">copy-on-write</button>
+          <button class="fc-btn" data-f="swap">swap-in</button>
+          <button class="fc-btn" data-f="numa">NUMA hint</button>
+          <button class="fc-btn" data-f="segv">bad access</button>
+        </div>
+        <div class="fault-out" id="fault-out"></div>
+      </div>
+      <div class="fig-cap">In every legitimate case the handler ends by installing a valid PTE and the faulting
+        instruction is <b>restarted</b>. This lazy, fault-driven population is why a process can <code>mmap</code>
+        gigabytes instantly and only pay for the pages it touches.</div>
+    </div>
+  </section>
+
+  <!-- ============ 11. LIFE OF AN ALLOCATION ============ -->
+  <section class="section" id="s11">
+    <div class="sec-head"><span class="sec-num">11</span><h2>The life of an allocation</h2></div>
+    <p class="sec-kicker">Follow a process that touches a new heap page, and watch every subsystem in this guide cooperate. Step through it.</p>
+
+    <div class="fig">
+      <div class="fig-head"><span class="dot"></span><span class="t">malloc → write → resident</span><span class="lbl"><span id="life-counter">step 1 / 6</span></span></div>
+      <div class="fig-body">
+        <div class="ctrls">
+          <button class="btn primary" id="life-next">next step ▶</button>
+          <button class="btn ghost" id="life-reset">restart</button>
+        </div>
+        <div class="life" id="life-steps">
+          <div class="life-step on"><div class="ls-num">1</div><div class="ls-body">
+            <h4>malloc → mmap, no memory yet</h4>
+            <p>For a large request <code>malloc</code> calls <code>mmap</code> for anonymous memory. The kernel creates a
+              <b>VMA</b> in the <code>mm_struct</code> (indexed in the maple tree) but allocates <b>no physical
+              memory</b>. The page tables for the region are empty.</p>
+            <div class="tags"><span>vm_area_struct</span><span>maple tree</span><span>lazy</span></div>
+          </div></div>
+          <div class="life-step"><div class="ls-num">2</div><div class="ls-body">
+            <h4>The write faults</h4>
+            <p>The process writes an address in the region. The MMU walks the tables, finds the PTE <b>not present</b>,
+              and raises a <b>page fault</b>: <code>do_page_fault</code> → <code>handle_mm_fault</code>.</p>
+            <div class="tags"><span>MMU walk</span><span>#PF</span></div>
+          </div></div>
+          <div class="life-step"><div class="ls-num">3</div><div class="ls-body">
+            <h4>Handler asks the allocator for a frame</h4>
+            <p>An anonymous region with no page — so it calls <code>alloc_pages</code> / <code>folio_alloc</code> with
+              <code>GFP_HIGHUSER_MOVABLE</code> (user data, movable, zeroed).</p>
+            <div class="tags"><span>alloc_pages</span><span>GFP_HIGHUSER_MOVABLE</span></div>
+          </div></div>
+          <div class="life-step"><div class="ls-num">4</div><div class="ls-body">
+            <h4>Buddy allocator: fast path or slow path</h4>
+            <p>The allocator picks the local <b>NUMA node</b>, walks its <b>zonelist</b>, and at the first zone above its
+              <b>watermark</b> pulls an order-0 page — almost certainly from the lock-free <b>per-CPU list</b>. If every
+              zone is below its watermark: wake <code>kswapd</code> → direct reclaim → compaction → OOM killer.</p>
+            <div class="tags"><span>zonelist</span><span>watermark</span><span>PCP</span></div>
+          </div></div>
+          <div class="life-step"><div class="ls-num">5</div><div class="ls-body">
+            <h4>Wire up the frame</h4>
+            <p>The handler <b>zeroes</b> it (no leaking another process's data), adds it to the <b>LRU list</b> (so
+              reclaim can find it), sets up its <b>reverse mapping</b> (anon_vma), and installs a <b>PTE</b> — present,
+              user, writable. It flushes any stale TLB entry.</p>
+            <div class="tags"><span>LRU</span><span>rmap</span><span>set_pte_at</span><span>TLB</span></div>
+          </div></div>
+          <div class="life-step"><div class="ls-num">6</div><div class="ls-body">
+            <h4>Restart — and a possible afterlife</h4>
+            <p>The instruction restarts; the MMU walk now succeeds. Later, under pressure, <code>kswapd</code> may find
+              the page cold, unmap it via rmap with a TLB shootdown, write it to <b>swap</b>, and leave a swap entry in
+              the PTE. On the wrong node, NUMA balancing may <b>migrate</b> it closer.</p>
+            <div class="tags"><span>reclaim</span><span>swap</span><span>migration</span></div>
+          </div></div>
+        </div>
+      </div>
+      <div class="fig-cap">Every subsystem in this guide participated in the life of that one page.</div>
+    </div>
+  </section>
+
+  <!-- ============ 12. GLOSSARY ============ -->
+  <section class="section" id="s12">
+    <div class="sec-head"><span class="sec-num">12</span><h2>Glossary</h2></div>
+    <p class="sec-kicker">The recurring vocabulary, in one place. Filter to find a term fast.</p>
+    <div class="ptw-input" style="margin-bottom:18px">
+      <label for="gloss-search">filter</label>
+      <input type="text" id="gloss-search" placeholder="e.g. rmap, watermark, COW…" spellcheck="false" style="width:280px;color:var(--text)">
+    </div>
+    <div class="iface" id="glossary" style="max-width:var(--readw)"></div>
+  </section>
+
+  <!-- ============ 13. SOURCE MAP ============ -->
+  <section class="section" id="s13">
+    <div class="sec-head"><span class="sec-num">13</span><h2>Seeing it on a live system</h2></div>
+    <p class="sec-kicker">The fastest way to make these concepts concrete is to read them off a running kernel.</p>
+    <div class="iface">
+      <div class="row"><div class="k">/proc/meminfo</div><div class="v">Global totals — free, available, cached, dirty, writeback, slab, swap.</div></div>
+      <div class="row"><div class="k">/proc/zoneinfo</div><div class="v">Per-zone free pages and watermarks (min/low/high). The §5 widget, live.</div></div>
+      <div class="row"><div class="k">/proc/buddyinfo</div><div class="v">Free-block counts per order per zone — watch fragmentation. The §5 free lists, live.</div></div>
+      <div class="row"><div class="k">/proc/pagetypeinfo</div><div class="v">Free blocks broken down by migratetype — anti-fragmentation state.</div></div>
+      <div class="row"><div class="k">/proc/vmstat</div><div class="v">Counters for faults, reclaim, compaction, NUMA balancing, swap.</div></div>
+      <div class="row"><div class="k">/proc/&lt;pid&gt;/maps · smaps</div><div class="v">A process's VMAs and per-region memory. The maple tree's contents, §10.</div></div>
+      <div class="row"><div class="k">numastat · /sys/.../node/</div><div class="v">Per-NUMA-node memory totals and allocation hit/miss stats (§3).</div></div>
+      <div class="row"><div class="k">/sys/.../lru_gen/</div><div class="v">MGLRU controls (§7). Also <code>transparent_hugepage/</code> for THP.</div></div>
+      <div class="row"><div class="k">/sys/fs/cgroup/.../memory.*</div><div class="v">Per-cgroup usage, limits, pressure, and events (memcg, §7).</div></div>
+    </div>
+    <div class="prose">
+      <p style="color:var(--muted);font-size:14.5px"><b style="color:var(--text)">Background reading:</b> Mel Gorman,
+        <i>Understanding the Linux Virtual Memory Manager</i> (2.4/2.6 — the conceptual scaffolding); the kernel's own
+        <code>Documentation/mm/</code> and <code>Documentation/admin-guide/mm/</code> (including <code>transhuge.rst</code>,
+        <code>numa_memory_policy.rst</code>, <code>multigen_lru.rst</code>); and LWN.net's long-running coverage of mm
+        changes — folios, the maple tree, MGLRU, memory tiering.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <b>The Linux Memory Manager, Bottom to Top</b> · v6.8 (March 2024) · x86-64.<br>
+  Adapted into an interactive guide from a reference document grounded in Mel Gorman's classic. Structures and policies
+  here — <code>pglist_data</code>/zones, the buddy allocator, the page cache, reclaim, migration, and the folded
+  multi-level page-table walk — are the shared core of the Linux memory manager as of v6.8. Interactives are pedagogical
+  models, simplified from the real source.
+</footer>
+
+<script>
+"use strict";
+const RM = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+/* ---------------- progress bar + scroll-spy nav ---------------- */
+const progress = document.getElementById('progress');
+const navLinks = [...document.querySelectorAll('.topbar nav a')];
+function onScroll(){
+  const h = document.documentElement;
+  const max = h.scrollHeight - h.clientHeight;
+  progress.style.width = (max>0 ? (h.scrollTop/max*100):0) + '%';
+  updateGutter();
+}
+window.addEventListener('scroll', onScroll, {passive:true});
+
+/* ---------------- hex address gutter (signature) ---------------- */
+const gutter = document.getElementById('gutter');
+const gutLabel = document.getElementById('gut-label');
+let gutRows = [];
+function buildGutter(){
+  if(!gutter) return;
+  const n = Math.ceil(window.innerHeight/22)+2;
+  gutter.innerHTML='';
+  gutRows=[];
+  for(let i=0;i<n;i++){
+    const d=document.createElement('div');
+    d.className='gut-row';
+    gutter.appendChild(d); gutRows.push(d);
+  }
+}
+const sectionAddrs = [
+  ['#s1','ffff8880'],['#s2','ffff8881'],['#s3','ffff8884'],['#s4','ffff8890'],
+  ['#s5','ffffea00'],['#s6','ffffc900'],['#s7','ffffc920'],['#s8','ffffc940'],
+  ['#s9','ffff8000'],['#s10','00007f3c'],['#s11','00005580'],['#s12','ffffffef'],['#s13','ffffffff']
+];
+function updateGutter(){
+  if(!gutter||gutRows.length===0) return;
+  const base = (window.scrollY)>>>0;
+  for(let i=0;i<gutRows.length;i++){
+    const v = (base + i*0x40) >>> 0;
+    const hex = v.toString(16).padStart(8,'0');
+    gutRows[i].textContent = '0x'+hex;
+    gutRows[i].style.color = (i===2)? 'var(--cyan)' : '';
+  }
+  // section label
+  let cur = sectionAddrs[0];
+  for(const [sel,_] of sectionAddrs){
+    const el=document.querySelector(sel);
+    if(el && el.getBoundingClientRect().top < 120) cur=[sel];
+  }
+  // update nav active
+  let active=null;
+  document.querySelectorAll('section.section').forEach(s=>{
+    const r=s.getBoundingClientRect();
+    if(r.top<140) active=s.id;
+  });
+  navLinks.forEach(a=>{
+    a.style.color = a.getAttribute('href')==='#'+active ? 'var(--cyan)' : '';
+    a.style.background = a.getAttribute('href')==='#'+active ? 'var(--line-soft)' : '';
+  });
+}
+buildGutter();
+window.addEventListener('resize',()=>{buildGutter();updateGutter();});
+onScroll();
+
+/* ================================================================
+   BUDDY ALLOCATOR
+   ================================================================ */
+(function(){
+  const TOTAL=16, MAXORD=4;
+  const COLORS=['#5BC8EC','#67CF8E','#F0A93D','#E86C8A','#9D8DF1','#6FCFC4','#E8B04A'];
+  let blocks=[], colorIx=0, nextId=1;
+  const strip=document.getElementById('buddy-strip');
+  const log=document.getElementById('buddy-log');
+  const fl=document.getElementById('buddy-freelist');
+
+  function reset(){ blocks=[{id:nextId++,start:0,order:MAXORD,alloc:false}]; colorIx=0;
+    render(); log.innerHTML='Zone reset — one free order-4 block (16 pages). Allocate to split it.'; }
+
+  function sorted(){ return [...blocks].sort((a,b)=>a.start-b.start); }
+
+  function allocate(k){
+    // find smallest free block with order>=k
+    let cand=null;
+    for(const b of blocks){ if(!b.alloc && b.order>=k){ if(!cand||b.order<cand.order) cand=b; } }
+    if(!cand){ log.innerHTML='<b style="color:var(--rose)">No block large enough.</b> On a real zone this enters the slow path: wake kswapd → reclaim → compaction.'; return; }
+    let splits=0;
+    while(cand.order>k){
+      // split cand into two halves
+      const half=1<<(cand.order-1);
+      const buddy={id:nextId++,start:cand.start+half,order:cand.order-1,alloc:false};
+      cand.order=cand.order-1;
+      blocks.push(buddy);
+      splits++;
+    }
+    cand.alloc=true; cand.color=COLORS[colorIx++%COLORS.length];
+    cand.flash=true;
+    const msg = splits>0
+      ? `Split ${splits}× → allocated order-${k} (${1<<k} pg). Buddy halves returned to free lists.`
+      : `Pulled a ready order-${k} block (${1<<k} pg) — no split needed.`;
+    log.innerHTML=msg;
+    render();
+  }
+
+  function freeBlock(id){
+    let b=blocks.find(x=>x.id===id); if(!b||!b.alloc) return;
+    b.alloc=false; b.color=null;
+    let merges=0;
+    // coalesce upward
+    while(b.order<MAXORD){
+      const buddyStart=b.start ^ (1<<b.order);
+      const buddy=blocks.find(x=>x!==b && x.start===buddyStart && x.order===b.order && !x.alloc);
+      if(!buddy) break;
+      const newStart=Math.min(b.start,buddy.start);
+      blocks=blocks.filter(x=>x!==buddy);
+      b.start=newStart; b.order=b.order+1;
+      merges++;
+    }
+    b.flash=true;
+    log.innerHTML = merges>0
+      ? `Freed → coalesced ${merges}× with free buddies into one order-${b.order} block (${1<<b.order} pg).`
+      : `Freed an order-${b.order} block. Its buddy was busy, so no merge yet.`;
+    render();
+  }
+
+  function render(){
+    strip.innerHTML='';
+    for(const b of sorted()){
+      const d=document.createElement('div');
+      const sz=1<<b.order;
+      d.className='bk '+(b.alloc?'alloc':'free')+(b.flash&&!RM?' flash':'');
+      d.style.flex=sz+' '+sz+' 0';
+      if(b.alloc){ d.style.background=b.color; d.title='click to free'; d.setAttribute('role','button'); d.tabIndex=0;
+        d.onclick=()=>freeBlock(b.id);
+        d.onkeydown=(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();freeBlock(b.id);}}; }
+      d.innerHTML=`<span class="ord">order ${b.order}</span><span class="sz">${sz} pg${b.alloc?' · used':' · free'}</span>`;
+      strip.appendChild(d);
+      b.flash=false;
+    }
+    // free lists
+    fl.innerHTML='';
+    for(let o=0;o<=MAXORD;o++){
+      const c=blocks.filter(b=>!b.alloc&&b.order===o).length;
+      const cell=document.createElement('div'); cell.className='fl-cell';
+      cell.innerHTML=`<div class="o">free_area[${o}]</div><div class="c${c===0?' zero':''}">${c}</div><div class="b">${1<<o} pg block${o?'s':''}</div>`;
+      fl.appendChild(cell);
+    }
+  }
+
+  document.querySelectorAll('[data-alloc]').forEach(btn=>{
+    btn.addEventListener('click',()=>allocate(+btn.dataset.alloc));
+  });
+  document.getElementById('buddy-reset').addEventListener('click',reset);
+  reset();
+})();
+
+/* ================================================================
+   WATERMARKS
+   ================================================================ */
+(function(){
+  const fill=document.getElementById('wm-fill');
+  const slider=document.getElementById('wm-slider');
+  const val=document.getElementById('wm-val');
+  const name=document.getElementById('wm-name');
+  const desc=document.getElementById('wm-desc');
+  const sim=document.getElementById('wm-sim');
+  const states=[
+    {min:40, name:'Plenty', color:'var(--green)', desc:'Above the high watermark — memory is ample and nobody reclaims.'},
+    {min:25, name:'kswapd wakes', color:'var(--cyan)', desc:'Below the high watermark, above low. kswapd reclaims in the background up toward high — allocations stay on the fast path.'},
+    {min:10, name:'Direct reclaim', color:'var(--amber)', desc:'Below low: kswapd is awake, and allocators that can\'t be served may run reclaim inline (and block) before retrying.'},
+    {min:0,  name:'Emergency reserves', color:'var(--rose)', desc:'At min: only GFP_ATOMIC / PF_MEMALLOC contexts may consume the last reserves. Ordinary allocations must reclaim first — or trigger the OOM killer.'}
+  ];
+  function update(v){
+    val.textContent=v+'%';
+    fill.style.height=v+'%';
+    let s=states[0];
+    if(v<40) s=states[1];
+    if(v<25) s=states[2];
+    if(v<10) s=states[3];
+    name.textContent=s.name; name.style.color=s.color;
+    desc.textContent=s.desc;
+    fill.style.background = v<10 ? 'linear-gradient(180deg,var(--rose),#7a2d3f)'
+      : v<25 ? 'linear-gradient(180deg,var(--amber),#7a5520)'
+      : 'linear-gradient(180deg,var(--cyan),#2d6f8c)';
+  }
+  slider.addEventListener('input',()=>update(+slider.value));
+  let timer=null;
+  sim.addEventListener('click',()=>{
+    if(timer){clearInterval(timer);timer=null;sim.textContent='simulate allocation burst →';return;}
+    if(RM){ slider.value=6; update(6); setTimeout(()=>{slider.value=70;update(70);},400); return; }
+    sim.textContent='■ stop';
+    let v=+slider.value, draining=true;
+    timer=setInterval(()=>{
+      if(draining){ v-=3; if(v<=6){draining=false;} }
+      else { v+=2; if(v>=70){v=70; clearInterval(timer);timer=null;sim.textContent='simulate allocation burst →';} }
+      slider.value=v; update(v);
+    },120);
+  });
+  update(70);
+})();
+
+/* ================================================================
+   PAGE TABLE WALK
+   ================================================================ */
+(function(){
+  const input=document.getElementById('ptw-va');
+  const bits=document.getElementById('ptw-bits');
+  const log=document.getElementById('ptw-log');
+  const lvls=[...document.querySelectorAll('.ptw-lvl')];
+  const segs=[
+    {nm:'PGD', cls:'bs-pgd', shift:39},
+    {nm:'PUD', cls:'bs-pud', shift:30},
+    {nm:'PMD', cls:'bs-pmd', shift:21},
+    {nm:'PTE', cls:'bs-pte', shift:12},
+  ];
+  let idx=[], step=0;
+
+  function parse(){
+    let raw=input.value.trim().replace(/^0x/i,'');
+    let va=parseInt(raw,16);
+    if(isNaN(va)||va<0){ va=0; }
+    if(va>Math.pow(2,48)-1) va=va % Math.pow(2,48);
+    idx=segs.map(s=> Math.floor(va/Math.pow(2,s.shift)) % 512);
+    const offset = va % 4096;
+    // render bit segments
+    bits.innerHTML='';
+    segs.forEach((s,i)=>{
+      const d=document.createElement('div'); d.className='bitseg '+s.cls;
+      const bin=idx[i].toString(2).padStart(9,'0');
+      d.innerHTML=`<div class="nm">${s.nm} · 9 bits</div><div class="bn">${bin}</div><div class="dx">index ${idx[i]}</div>`;
+      bits.appendChild(d);
+    });
+    const od=document.createElement('div'); od.className='bitseg bs-off';
+    od.innerHTML=`<div class="nm">OFFSET · 12 bits</div><div class="bn">${offset.toString(2).padStart(12,'0')}</div><div class="dx">byte ${offset}</div>`;
+    bits.appendChild(od);
+    resetWalk();
+  }
+  function resetWalk(){
+    step=0;
+    lvls.forEach((l,i)=>{ l.classList.toggle('on',i===0); l.classList.remove('done'); });
+    document.getElementById('ptw-i0').textContent='holds PGD phys addr';
+    for(let i=1;i<=4;i++) document.getElementById('ptw-i'+i).textContent='[ — ]';
+    document.getElementById('ptw-i5').textContent='+ offset';
+    log.innerHTML='Address decoded into four 9-bit indices + a 12-bit offset. Press <b>step</b> to walk.';
+  }
+  function doStep(){
+    if(step>=5){ parse(); return; }
+    step++;
+    lvls.forEach((l,i)=>{ l.classList.toggle('on',i===step); if(i<step) l.classList.add('done'); });
+    if(step>=1 && step<=4){
+      const i=step-1;
+      document.getElementById('ptw-i'+step).textContent=`[${idx[i]}] →`;
+      log.innerHTML=`<b>${segs[i].nm}</b>: index <b>${idx[i]}</b> selects entry ${idx[i]} of 512. Read it to get the next table's physical address.`;
+    }
+    if(step===5){
+      log.innerHTML='<b style="color:var(--green)">Translation complete.</b> The PTE yields the 4 KiB frame; the 12-bit offset picks the byte within it. The MMU caches this in the TLB.';
+    }
+  }
+  input.addEventListener('input',parse);
+  document.getElementById('ptw-step').addEventListener('click',doStep);
+  document.getElementById('ptw-rand').addEventListener('click',()=>{
+    // plausible user-space canonical address
+    let hi=(0x7000 + Math.floor(Math.random()*0x0FFF));
+    let lo=Math.floor(Math.random()*0xFFFFFFFF);
+    input.value=(hi.toString(16)+lo.toString(16).padStart(8,'0')).toUpperCase();
+    parse();
+  });
+  parse();
+})();
+
+/* ================================================================
+   FAULT EXPLORER
+   ================================================================ */
+(function(){
+  const out=document.getElementById('fault-out');
+  const cases={
+    zero:{kind:'minor',title:'Demand-zero fault (read)',
+      lead:'The VMA is anonymous and nothing is mapped yet, and this is a read.',
+      steps:['Find the VMA — anonymous, read access permitted.','Point the PTE at the single shared read-only <b>zero page</b> — one system-wide frame of zeros.','No allocation: countless never-written pages cost no memory.','Restart the instruction; the read returns zeros.']},
+    anon:{kind:'minor',title:'Anonymous write fault',
+      lead:'A write to fresh anonymous memory (or the first write to a zero-page-backed read).',
+      steps:['Find the VMA — anonymous, writable.','Call <code>alloc_pages</code> with <code>GFP_HIGHUSER_MOVABLE</code> for a real frame.','Zero the frame, add to the LRU, set up rmap (anon_vma).','Install a present, writable, user PTE; restart.']},
+    file:{kind:'major',title:'File-backed demand paging',
+      lead:'The VMA maps a file and the faulting page isn\'t resident.',
+      steps:['Find the VMA — file-backed; look the page up in the file\'s <b>page cache</b>.','Cache <b>miss</b>: allocate a folio, insert into the XArray, call <code>read_folio</code> — disk I/O.','When I/O completes, mark the folio uptodate.','Install a PTE pointing at the cached folio; restart. (A cache <b>hit</b> would be a minor fault.)']},
+    cow:{kind:'minor',title:'Copy-on-write fault',
+      lead:'After fork, parent and child share private pages read-only. One of them writes.',
+      steps:['Permission fault: writable VMA over a read-only PTE on a shared page.','Allocate a new frame, copy the contents.','Install a private writable PTE for the faulting process.','Each side gets its own copy only when it actually diverges. Restart.']},
+    swap:{kind:'major',title:'Swap-in (major fault)',
+      lead:'The PTE holds a swap entry — the page was evicted to swap.',
+      steps:['Decode the not-present PTE\'s <code>swp_entry_t</code>: which swap area + slot.','Check the <b>swap cache</b> first; otherwise allocate a frame and read from the slot — disk I/O.','Reinstall a present PTE pointing at the frame.','Restart. Because it needed I/O, this is counted a <b>major</b> fault.']},
+    numa:{kind:'minor',title:'NUMA-hinting fault',
+      lead:'The PTE was deliberately made non-present to sample locality.',
+      steps:['<code>do_numa_page</code> records which node the accessing CPU is on.','If the page is consistently accessed from a remote node, <b>migrate</b> it toward the CPU.','Restore the original PTE.','Restart. A few such faults buy much better average latency on NUMA hardware.']},
+    segv:{kind:'err',title:'Segmentation fault',
+      lead:'No VMA covers the address — or the access violates the VMA\'s permissions (e.g. writing read-only).',
+      steps:['Find the VMA — none, or flags forbid this access.','This is a genuine error, not a lazy-population case.','User space receives <b>SIGSEGV</b>; kernel code takes an oops or fixup.','No PTE is installed; the access does not succeed.']}
+  };
+  const badge={minor:'<span class="bdg minor">MINOR · no I/O</span>',
+    major:'<span class="bdg major">MAJOR · disk I/O</span>',
+    err:'<span class="bdg err">SIGSEGV · error</span>'};
+  function show(key){
+    const c=cases[key];
+    out.innerHTML=`<div class="badges">${badge[c.kind]}</div><h4>${c.title}</h4><p>${c.lead}</p><ol class="fault-steps">${c.steps.map(s=>`<li>${s}</li>`).join('')}</ol>`;
+  }
+  document.querySelectorAll('#fault-cases .fc-btn').forEach(b=>{
+    b.addEventListener('click',()=>{
+      document.querySelectorAll('#fault-cases .fc-btn').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); show(b.dataset.f);
+    });
+  });
+  show('zero');
+})();
+
+/* ================================================================
+   COMPACTION
+   ================================================================ */
+(function(){
+  const N=24;
+  const zone=document.getElementById('comp-zone');
+  const log=document.getElementById('comp-log');
+  let cells=[]; // true=used(movable), false=free
+  function scatter(){
+    cells=[];
+    for(let i=0;i<N;i++) cells.push(Math.random()<0.45);
+    render();
+    log.innerHTML='Scattered: movable pages (solid) interleaved with free slots. Total free is ample, but no large contiguous block exists. Press <b>compact</b>.';
+  }
+  function render(){
+    zone.innerHTML='';
+    cells.forEach((u,i)=>{
+      const d=document.createElement('div');
+      d.className='cc '+(u?'used':'free');
+      d.textContent=u?'M':'';
+      zone.appendChild(d);
+    });
+  }
+  function compact(){
+    const used=cells.filter(Boolean).length;
+    if(RM){
+      cells=cells.map((_,i)=> i<used);
+      render();
+      log.innerHTML=`<b style="color:var(--green)">Compacted.</b> ${used} movable pages swept to the low end; ${N-used} free pages now form one contiguous block — ready to back a huge page.`;
+      return;
+    }
+    // animate: repeatedly move the rightmost used into the leftmost free if free<used boundary
+    log.innerHTML='Migration scanner (↑ from low end) and free scanner (↓ from high end) move toward each other…';
+    let timer=setInterval(()=>{
+      // find leftmost free
+      let lf=cells.indexOf(false);
+      // find rightmost used after lf
+      let ru=-1;
+      for(let i=N-1;i>lf;i--){ if(cells[i]){ru=i;break;} }
+      if(lf===-1||ru===-1||ru<=lf){
+        clearInterval(timer);
+        const u=cells.filter(Boolean).length;
+        log.innerHTML=`<b style="color:var(--green)">Scanners met — compacted.</b> Free pages now form one contiguous high-order block, ready to back a transparent huge page.`;
+        return;
+      }
+      cells[lf]=true; cells[ru]=false;
+      render();
+    },180);
+  }
+  document.getElementById('comp-run').addEventListener('click',compact);
+  document.getElementById('comp-reset').addEventListener('click',scatter);
+  scatter();
+})();
+
+/* ================================================================
+   LIFE OF AN ALLOCATION stepper
+   ================================================================ */
+(function(){
+  const steps=[...document.querySelectorAll('#life-steps .life-step')];
+  const counter=document.getElementById('life-counter');
+  let cur=0;
+  function render(){
+    steps.forEach((s,i)=>s.classList.toggle('on',i<=cur));
+    counter.textContent=`step ${cur+1} / ${steps.length}`;
+    if(cur<steps.length-1 && !RM){
+      steps[cur].scrollIntoView({behavior:'smooth',block:'center'});
+    }
+  }
+  document.getElementById('life-next').addEventListener('click',()=>{
+    cur=(cur+1)%steps.length; if(cur===0){} render();
+  });
+  document.getElementById('life-reset').addEventListener('click',()=>{cur=0;render();});
+  render();
+})();
+
+/* ================================================================
+   GLOSSARY
+   ================================================================ */
+(function(){
+  const terms=[
+    ['PFN','Page Frame Number — a physical page\'s index (physical address >> PAGE_SHIFT).'],
+    ['struct page / folio','Descriptor for a frame / a group of frames managed as a unit. The folio is the modern unit of mm.'],
+    ['pglist_data (pg_data_t)','A NUMA node\'s memory descriptor.'],
+    ['Zone','A sub-range of a node\'s memory with shared addressing/mobility constraints (DMA / DMA32 / NORMAL / MOVABLE / DEVICE).'],
+    ['Buddy allocator','The physical page allocator managing power-of-two free blocks per zone.'],
+    ['Migratetype','Mobility class of a pageblock (unmovable / movable / reclaimable …) used for anti-fragmentation.'],
+    ['GFP flags','Per-allocation constraints — which zones, may it sleep / reclaim, etc.'],
+    ['Watermark','min / low / high free-page thresholds that drive reclaim.'],
+    ['PCP','Per-CPU page lists — a lock-free cache of free pages.'],
+    ['memblock','The boot-time physical allocator used before the buddy allocator exists.'],
+    ['e820 / EFI memory map','Firmware\'s description of physical memory ranges.'],
+    ['SPARSEMEM / vmemmap','The default memory model — a virtually-mapped struct page array tolerant of physical holes.'],
+    ['address_space','The page cache\'s per-file structure — the XArray of cached folios plus the filesystem\'s a_ops.'],
+    ['XArray','The index from file offset to cached folio (successor to the radix tree).'],
+    ['Writeback / balance_dirty_pages','Flushing dirty cache to disk; throttling writers.'],
+    ['OPT / MIN / Belady','The optimal (future-knowing, unimplementable) replacement policy Linux\'s LRU approximates.'],
+    ['LRU / MGLRU','The active/inactive (or multi-generational) page-replacement approximations.'],
+    ['rmap','Reverse mapping — finds every PTE mapping a given physical page.'],
+    ['Refault / workingset','Detecting wrongly-evicted pages via shadow entries to adapt reclaim.'],
+    ['Migration / compaction','Relocating pages; defragmenting by migrating movable pages into contiguous blocks.'],
+    ['PGD / P4D / PUD / PMD / PTE','The (up to) five page-table levels on x86-64.'],
+    ['TLB / shootdown','The translation cache; the IPI-based protocol to invalidate stale entries across CPUs.'],
+    ['THP / hugetlbfs','Transparent (automatic) and explicitly-reserved huge pages.'],
+    ['KPTI','Kernel Page-Table Isolation (Meltdown mitigation — split user/kernel PGDs).'],
+    ['NUMA','Non-Uniform Memory Access — cost depends on which node holds memory relative to the accessing CPU.'],
+    ['mm_struct','A process\'s address-space descriptor (page-table root, VMAs, counters).'],
+    ['VMA (vm_area_struct)','One contiguous virtual region with uniform backing / permissions.'],
+    ['Maple tree','The range-indexed structure holding an mm\'s VMAs (replaced the rbtree).'],
+    ['Compound / tail page','A higher-order page treated as a unit; first frame is the head, the rest are tails.'],
+    ['lruvec','The per-(cgroup, node) container of LRU lists / MGLRU state used by reclaim.'],
+    ['kswapd / kcompactd / khugepaged','Per-node background threads for reclaim, compaction, and collapsing base pages into huge pages.'],
+    ['Swap entry (swp_entry_t)','A not-present PTE value encoding the swap area + slot of an evicted anonymous page.'],
+    ['COW (copy-on-write)','Sharing pages read-only until a write faults and triggers a private copy.'],
+    ['Demand paging','Populating PTEs and frames lazily on fault, not up front.'],
+    ['Zero page','A single shared read-only zeroed frame backing never-written anonymous pages.'],
+    ['memcg','The cgroup v2 memory controller — per-cgroup accounting, limits, reclaim, OOM.'],
+    ['Major / minor fault','A fault that needs disk I/O (swap-in, file read) versus one that doesn\'t (demand-zero, COW, cache hit).']
+  ];
+  const box=document.getElementById('glossary');
+  function render(filter){
+    const f=(filter||'').toLowerCase();
+    box.innerHTML='';
+    let shown=0;
+    terms.forEach(([k,v])=>{
+      if(f && !(k.toLowerCase().includes(f)||v.toLowerCase().includes(f))) return;
+      shown++;
+      const r=document.createElement('div'); r.className='row';
+      r.innerHTML=`<div class="k">${k}</div><div class="v">${v}</div>`;
+      box.appendChild(r);
+    });
+    if(shown===0){ box.innerHTML='<div class="row"><div class="k">—</div><div class="v">No term matches that filter.</div></div>'; }
+  }
+  document.getElementById('gloss-search').addEventListener('input',e=>render(e.target.value));
+  render('');
+})();
+</script>
+</body>
+</html>

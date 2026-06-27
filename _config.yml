@@ -23,6 +23,9 @@ collections:
   other:
     output: true
     permalink: /:title
+  llm_sites:
+    output: true
+    permalink: /llm_sites/:name:output_ext
 sqlite:
   - data: posts
     file: &db "_db/clog.db"

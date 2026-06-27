@@ -16,6 +16,7 @@ arom:
     - kmohr
     - pal
   pdf: https://arxiv.org/pdf/2606.26138
+  poster: assets/publications/AROM_LtRAM.pdf
 
 arca:
   title: "Continuation-Centric Computing with Arca"

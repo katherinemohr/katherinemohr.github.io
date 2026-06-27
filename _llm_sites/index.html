@@ -1,0 +1,20 @@
+---
+layout: default
+title: LLM Sites
+---
+<article>
+    <section>
+        <div style="padding-top: 20px">
+            <h3>LLM Sites</h3>
+            <ul style="list-style: none; padding-left: 0px;">
+                {% for page in site.llm_sites %}
+                {% unless page.name == 'index.html' %}
+                <li>
+                    <p><a href="{{ page.url }}">{{ page.title }}</a></p>
+                </li>
+                {% endunless %}
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+</article>
