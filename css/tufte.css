@@ -482,7 +482,7 @@ label.margin-toggle:not(.sidenote-number) {
 .profile-header {
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
+  align-items: center;
   gap: 20px;
   margin-bottom: 1em;
   width: 65%;
