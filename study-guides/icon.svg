@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Study Guides">
+  <rect width="512" height="512" rx="112" fill="#FBF6EC"/>
+  <g transform="translate(104 120)">
+    <rect x="10" y="10" width="304" height="272" rx="22" fill="#2C8C7C"/>
+    <rect x="0" y="0" width="304" height="272" rx="22" fill="#FFFDF8" stroke="#E7DBC6" stroke-width="3"/>
+    <line x1="152" y1="20" x2="152" y2="252" stroke="#E7DBC6" stroke-width="3"/>
+    <g fill="#D8C8AC">
+      <rect x="34" y="64" width="84" height="12" rx="6"/>
+      <rect x="34" y="96" width="84" height="12" rx="6"/>
+      <rect x="34" y="128" width="62" height="12" rx="6"/>
+    </g>
+    <g fill="#D8C8AC">
+      <rect x="186" y="64" width="84" height="12" rx="6"/>
+      <rect x="186" y="96" width="84" height="12" rx="6"/>
+      <rect x="186" y="128" width="62" height="12" rx="6"/>
+    </g>
+    <path d="M196 0 h44 v78 l-22 -18 l-22 18 Z" fill="#E8A33D"/>
+  </g>
+</svg>

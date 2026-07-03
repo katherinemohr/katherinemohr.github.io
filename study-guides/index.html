@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Study Library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Mulish:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#FBF6EC">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<style>
+:root{
+  --paper:#FBF6EC; --paper-2:#F3EADA; --card:#FFFDF8;
+  --ink:#332C24; --ink-soft:#6E6456; --ink-faint:#9A8E7C;
+  --line:#E7DBC6; --line-strong:#D8C8AC;
+  --honey:#E8A33D; --honey-deep:#C27D14; --honey-soft:#FBEACB;
+  --accent-2:#2C8C7C; --accent-2-soft:#DCEFE9;
+  --accent-3:#5A61B4; --accent-3-soft:#E6E6F6;
+  --accent-4:#C0563B; --accent-4-soft:#F7E1D8;
+  --shadow-sm:0 1px 2px rgba(80,60,30,.06),0 2px 8px rgba(80,60,30,.05);
+  --shadow-md:0 6px 18px rgba(90,66,28,.10),0 16px 36px rgba(90,66,28,.08);
+  --radius:18px;
+  --display:"Fraunces",Georgia,serif;
+  --body:"Mulish",-apple-system,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box} html{scroll-behavior:smooth}
+body{margin:0;font-family:var(--body);color:var(--ink);line-height:1.6;background:var(--paper);
+  background-image:radial-gradient(circle at 10% 6%,rgba(44,140,124,.06),transparent 42%),radial-gradient(circle at 90% 18%,rgba(90,97,180,.06),transparent 44%),radial-gradient(circle at 50% 120%,rgba(232,163,61,.07),transparent 55%);
+  -webkit-font-smoothing:antialiased;min-height:100vh;}
+.wrap{max-width:1000px;margin:0 auto;padding:0 22px}
+.head{padding:58px 0 18px}
+.eyebrow{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--honey-deep);background:var(--honey-soft);padding:7px 14px;border-radius:999px;border:1px solid #F0DCB0;margin-bottom:18px}
+.eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--honey);box-shadow:0 0 0 4px rgba(232,163,61,.2)}
+.head h1{font-family:var(--display);font-weight:700;font-size:clamp(2.2rem,6vw,3.4rem);letter-spacing:-.015em;margin:0 0 .3em}
+.head p{font-size:clamp(1.02rem,2vw,1.15rem);color:var(--ink-soft);max-width:56ch;margin:0}
+
+.folders{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0 6px}
+.fbtn{font-family:var(--body);font-weight:700;font-size:.9rem;color:var(--ink-soft);background:var(--card);border:1.5px solid var(--line);
+  border-radius:999px;padding:8px 15px;cursor:pointer;transition:.16s;display:inline-flex;align-items:center;gap:7px}
+.fbtn:hover{border-color:var(--line-strong);color:var(--ink)}
+.fbtn.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.fbtn .ct{font-family:var(--mono);font-size:11px;opacity:.6}
+
+.facets{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:14px 0 2px;min-height:8px}
+.facet-lab{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);margin-right:2px}
+.chip{font-family:var(--body);font-weight:600;font-size:.82rem;color:var(--ink-soft);background:#fff;border:1px solid var(--line);
+  border-radius:999px;padding:4px 11px;cursor:pointer;transition:.14s}
+.chip:hover{border-color:var(--line-strong)}
+.chip.on{background:var(--accent-3);border-color:var(--accent-3);color:#fff}
+.chip.venue.on{background:var(--accent-2);border-color:var(--accent-2)}
+.chip.year.on{background:var(--honey-deep);border-color:var(--honey-deep)}
+.chip-clear{font-family:var(--mono);font-size:11px;color:var(--ink-faint);background:none;border:0;cursor:pointer;text-decoration:underline;padding:4px}
+
+.sec{margin:26px 0 0}
+.sec-h{font-family:var(--display);font-weight:600;font-size:1.2rem;margin:0 0 14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px}
+a.cardlink{text-decoration:none;color:inherit}
+.gcard{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;box-shadow:var(--shadow-sm);
+  transition:transform .18s,box-shadow .18s,border-color .18s;height:100%;display:flex;flex-direction:column}
+.gcard:hover{transform:translateY(-4px);box-shadow:var(--shadow-md);border-color:var(--line-strong)}
+.gcard .tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:11px}
+.gtag{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.03em;padding:3px 8px;border-radius:999px;text-transform:uppercase}
+.t-note{background:var(--accent-3-soft);color:#3a409a}
+.t-paper{background:var(--accent-2-soft);color:#1f5b51}
+.t-other{background:var(--honey-soft);color:#6e4a09}
+.t-topic{background:#efece3;color:var(--ink-soft)}
+.gcard h2{font-family:var(--display);font-weight:600;font-size:1.22rem;letter-spacing:-.01em;margin:0 0 .35em;line-height:1.25}
+.gcard p{font-size:.93rem;color:var(--ink-soft);margin:0 0 14px;flex:1}
+.gcard .go{font-family:var(--body);font-weight:700;font-size:.9rem;color:var(--honey-deep);display:inline-flex;align-items:center;gap:6px}
+.gcard:hover .go{color:var(--accent-3)} .gcard .go .arr{transition:transform .18s} .gcard:hover .go .arr{transform:translateX(4px)}
+.empty{color:var(--ink-faint);font-style:italic;padding:24px 2px}
+
+.foot{margin:54px 0 40px;padding-top:20px;border-top:1px solid var(--line);font-size:.85rem;color:var(--ink-faint);font-family:var(--mono);line-height:1.7}
+.foot b{color:var(--ink-soft)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="head">
+    <span class="eyebrow"><span class="dot"></span>Personal Study Library</span>
+    <h1>Study Guides</h1>
+    <p>Interactive guides — papers, notes, and topics. Tap a folder, then filter by venue, year, or topic.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:6px">
+      <a href="digest.html" style="display:inline-flex;align-items:center;gap:8px;font-family:var(--body);font-weight:700;font-size:.95rem;color:#fff;background:var(--accent-3);border-radius:11px;padding:11px 18px;text-decoration:none;box-shadow:var(--shadow-sm)">📰 Paper digest — browse &amp; triage abstracts →</a>
+      <button id="offline" style="display:inline-flex;align-items:center;gap:8px;font-family:var(--body);font-weight:700;font-size:.95rem;color:var(--accent-2);background:var(--card);border:1.5px solid var(--accent-2);border-radius:11px;padding:11px 18px;cursor:pointer">📥 Save all for offline</button>
+    </div>
+    <div id="offstat" style="font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-top:8px"></div>
+  </header>
+
+  <nav class="folders" id="folders"></nav>
+  <div class="facets" id="facets"></div>
+
+  <section class="sec" id="recentSec">
+    <div class="sec-h">🕒 Recent</div>
+    <div class="grid" id="recentGrid"></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-h" id="browseTitle">📂 All guides</div>
+    <div class="grid" id="browseGrid"></div>
+    <div class="empty" id="emptyMsg" style="display:none">No guides match these filters.</div>
+  </section>
+
+  <footer class="foot">
+    <b>Study Library</b> · self-contained HTML, no tracking. Guides tagged by venue, year &amp; topic.
+  </footer>
+</div>
+
+<!-- GUIDES_START — replace this placeholder with your own entries (one per guide). See guides/README.md for the schema. -->
+<script id="papers-data" type="application/json">
+[
+  {
+    "slug": "pagedattention",
+    "file": "guides/pagedattention.html",
+    "cat": "paper",
+    "title": "PagedAttention — Handing Out Memory a Block at a Time",
+    "desc": "vLLM's paged KV cache: an OS-ideas-applied-to-GPUs paper. Interactive block allocator explorer.",
+    "venue": "SOSP",
+    "year": 2023,
+    "topics": [
+      "LLM serving",
+      "virtual memory",
+      "GPU",
+      "KV cache"
+    ],
+    "added": "2026-07-02"
+  }
+]
+</script>
+<!-- GUIDES_END -->
+
+<script>
+(function(){
+  var PAPERS = JSON.parse(document.getElementById('papers-data').textContent);
+  var CATS = [{k:'all',ic:'📂',label:'All'},{k:'note',ic:'📓',label:'Notes'},{k:'paper',ic:'📄',label:'Paper Reviews'},{k:'other',ic:'✦',label:'Others'}];
+  var tagClass = {note:'t-note',paper:'t-paper',other:'t-other'};
+  var state = {cat:'all', chips:new Set()};
+
+  function catLabel(k){ var c=CATS.filter(function(x){return x.k===k;})[0]; return c? c.ic+' '+c.label : k; }
+
+  function card(p){
+    var topicTags = (p.topics||[]).map(function(t){return '<span class="gtag t-topic">'+t+'</span>';}).join('');
+    var venueTag = (p.cat==='paper' && p.venue) ? '<span class="gtag '+(tagClass[p.cat]||'t-topic')+'">'+p.venue+(p.year?' '+p.year:'')+'</span>' : '<span class="gtag '+(tagClass[p.cat]||'t-topic')+'">'+(p.venue||'Guide')+'</span>';
+    return '<a class="cardlink" href="'+p.file+'"><article class="gcard">'
+      + '<div class="tags">'+venueTag+topicTags+'</div>'
+      + '<h2>'+p.title+'</h2><p>'+(p.desc||'')+'</p>'
+      + '<span class="go">Open <span class="arr">→</span></span></article></a>';
+  }
+
+  function tokens(p){ // everything a paper can be filtered by
+    var t=[]; if(p.venue) t.push(p.venue); if(p.year) t.push(String(p.year)); (p.topics||[]).forEach(function(x){t.push(x);}); return t;
+  }
+  function visible(){
+    return PAPERS.filter(function(p){
+      if(state.cat!=='all' && p.cat!==state.cat) return false;
+      var tk=tokens(p); var ok=true;
+      state.chips.forEach(function(c){ if(tk.indexOf(c)<0) ok=false; });
+      return ok;
+    });
+  }
+
+  // folders
+  var fol=document.getElementById('folders');
+  fol.innerHTML = CATS.map(function(c){
+    var n = c.k==='all'? PAPERS.length : PAPERS.filter(function(p){return p.cat===c.k;}).length;
+    return '<button class="fbtn'+(c.k==='all'?' on':'')+'" data-cat="'+c.k+'"><span>'+c.ic+'</span>'+c.label+' <span class="ct">'+n+'</span></button>';
+  }).join('');
+
+  function renderFacets(){
+    var pool = PAPERS.filter(function(p){ return state.cat==='all' || p.cat===state.cat; });
+    var venues=[], years=[], topics=[];
+    pool.forEach(function(p){ if(p.venue && venues.indexOf(p.venue)<0) venues.push(p.venue);
+      if(p.year && years.indexOf(String(p.year))<0) years.push(String(p.year));
+      (p.topics||[]).forEach(function(t){ if(topics.indexOf(t)<0) topics.push(t); }); });
+    years.sort().reverse(); venues.sort(); topics.sort();
+    function chips(arr,cls){ return arr.map(function(v){ return '<button class="chip '+cls+(state.chips.has(v)?' on':'')+'" data-chip="'+v+'">'+v+'</button>'; }).join(''); }
+    var html='';
+    if(venues.length>1) html += '<span class="facet-lab">Venue</span>'+chips(venues,'venue');
+    if(years.length>1)  html += '<span class="facet-lab">Year</span>'+chips(years,'year');
+    if(topics.length)   html += '<span class="facet-lab">Topic</span>'+chips(topics,'topic');
+    if(state.chips.size) html += '<button class="chip-clear" id="clearChips">clear ✕</button>';
+    document.getElementById('facets').innerHTML = html;
+  }
+
+  function render(){
+    renderFacets();
+    var recents = PAPERS.slice().sort(function(a,b){ return (b.added||'').localeCompare(a.added||''); }).slice(0,3);
+    document.getElementById('recentSec').style.display = (state.cat==='all' && state.chips.size===0) ? '' : 'none';
+    document.getElementById('recentGrid').innerHTML = recents.map(card).join('');
+    var vis = visible();
+    document.getElementById('browseTitle').textContent = catLabel(state.cat) + (state.chips.size? ' · '+vis.length+' match'+(vis.length===1?'':'es') : '');
+    document.getElementById('browseGrid').innerHTML = vis.map(card).join('');
+    document.getElementById('emptyMsg').style.display = vis.length? 'none':'block';
+  }
+
+  fol.addEventListener('click', function(e){ var b=e.target.closest('.fbtn'); if(!b) return;
+    state.cat=b.dataset.cat; state.chips.clear();
+    document.querySelectorAll('#folders .fbtn').forEach(function(x){x.classList.toggle('on',x.dataset.cat===state.cat);});
+    render();
+  });
+  document.getElementById('facets').addEventListener('click', function(e){
+    if(e.target.id==='clearChips'){ state.chips.clear(); render(); return; }
+    var c=e.target.closest('.chip'); if(!c) return;
+    var v=c.dataset.chip; if(state.chips.has(v)) state.chips.delete(v); else state.chips.add(v);
+    render();
+  });
+  render();
+})();
+</script>
+
+<script>
+/* PWA: register the worker, and a "Save all for offline" button that pre-caches
+   every guide + the digest + the web fonts so the whole library reads on a plane. */
+(function(){
+  if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(function(){}); }
+  var SAVE=document.getElementById("offline"), STAT=document.getElementById("offstat");
+  function setStat(t){ if(STAT) STAT.textContent=t; }
+  var prev=localStorage.getItem("sgOfflineSaved");
+  if(prev) setStat("✓ offline copy saved "+prev.slice(0,10)+" · tap again when online to refresh");
+  if(!SAVE) return;
+  if(!("caches" in window) || !("serviceWorker" in navigator)){
+    SAVE.style.display="none"; setStat("Offline install needs Chrome or Samsung Internet."); return;
+  }
+  var seenCss={};
+  async function cacheFonts(cache, html){
+    var urls=(html.match(/https:\/\/fonts\.googleapis\.com\/css2[^"')\s]+/g)||[]);
+    for(var i=0;i<urls.length;i++){
+      var css=urls[i].replace(/&amp;/g,"&");
+      if(seenCss[css]) continue; seenCss[css]=1;
+      try{
+        var r=await fetch(css,{mode:"cors"}); await cache.put(css, r.clone());
+        var woff=((await r.text()).match(/https:\/\/fonts\.gstatic\.com[^)'" ]+/g)||[]);
+        for(var j=0;j<woff.length;j++){ try{ var fr=await fetch(woff[j],{mode:"cors"}); await cache.put(woff[j], fr.clone()); }catch(e){} }
+      }catch(e){}
+    }
+  }
+  SAVE.addEventListener("click", async function(){
+    var P=JSON.parse(document.getElementById("papers-data").textContent);
+    var urls=[location.href, new URL("digest.html",location.href).href];
+    P.forEach(function(p){ urls.push(new URL(p.file, location.href).href); });
+    urls=urls.filter(function(v,i,a){return a.indexOf(v)===i;});
+    var cache=await caches.open("sg-offline-v3"), done=0;
+    SAVE.disabled=true;
+    for(var i=0;i<urls.length;i++){
+      try{
+        var res=await fetch(urls[i],{cache:"reload"});
+        await cache.put(urls[i], res.clone());
+        if((res.headers.get("content-type")||"").indexOf("text/html")>=0){ await cacheFonts(cache, await res.text()); }
+      }catch(e){}
+      done++; SAVE.textContent="📥 Saving "+done+"/"+urls.length+"…";
+    }
+    var when=new Date().toISOString();
+    localStorage.setItem("sgOfflineSaved", when);
+    SAVE.textContent="✓ Saved — reads offline"; SAVE.disabled=false;
+    setStat("✓ "+urls.length+" pages + fonts cached on this device · "+when.slice(0,10)+" · tap again when online to refresh");
+  });
+})();
+</script>
+</body>
+</html>

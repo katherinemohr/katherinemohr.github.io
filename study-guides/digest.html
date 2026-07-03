@@ -1,0 +1,122 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0">
+<title>Paper Digest — abstracts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Mulish:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#FBF6EC;--card:#FFFDF8;--ink:#332C24;--ink-soft:#6E6456;--ink-faint:#9A8E7C;--line:#E7DBC6;--line-strong:#D8C8AC;
+--honey:#E8A33D;--honey-deep:#C27D14;--honey-soft:#FBEACB;--accent-2:#2C8C7C;--accent-2-soft:#DCEFE9;--accent-3:#5A61B4;--accent-3-soft:#E6E6F6;--accent-4:#C0563B;
+--display:"Fraunces",Georgia,serif;--body:"Mulish",system-ui,sans-serif;--mono:"JetBrains Mono",monospace;}
+*{box-sizing:border-box}body{margin:0;font-family:var(--body);color:var(--ink);background:var(--paper);line-height:1.55}
+.wrap{max-width:1000px;margin:0 auto;padding:0 20px}
+.head{padding:46px 0 14px}.head h1{font-family:var(--display);font-weight:700;font-size:clamp(2rem,5vw,3rem);margin:0 0 .2em}
+.head p{color:var(--ink-soft);max-width:62ch;margin:0}
+.bar{position:sticky;top:0;z-index:10;background:rgba(251,246,236,.92);backdrop-filter:blur(8px);padding:14px 0;border-bottom:1px solid var(--line);margin-top:14px}
+.bar .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input[type=search]{font-family:var(--body);font-size:.92rem;padding:8px 12px;border:1.5px solid var(--line-strong);border-radius:10px;background:#fff;min-width:200px;flex:1}
+.chip{font-family:var(--body);font-weight:600;font-size:.82rem;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer}
+.chip.on{background:var(--accent-3);border-color:var(--accent-3);color:#fff}.chip.v.on{background:var(--accent-2);border-color:var(--accent-2)}.chip.y.on{background:var(--honey-deep);border-color:var(--honey-deep)}
+.btn{font-family:var(--body);font-weight:700;font-size:.85rem;border:1.5px solid var(--ink);background:var(--ink);color:#fff;border-radius:9px;padding:8px 14px;cursor:pointer}
+.count{font-family:var(--mono);font-size:12px;color:var(--ink-faint);margin-left:auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:14px 0;box-shadow:0 1px 2px rgba(80,60,30,.05)}
+.card.explain{border-color:var(--honey);box-shadow:0 0 0 2px var(--honey-soft)}.card.tutor{border-color:var(--accent-2);box-shadow:0 0 0 2px var(--accent-2-soft)}.card.skip{opacity:.4}
+.states{display:flex;gap:6px}.sbtn{font-family:var(--body);font-weight:700;font-size:.78rem;border:1.5px solid var(--line);background:#fff;color:var(--ink-soft);border-radius:8px;padding:5px 9px;cursor:pointer}
+.sbtn.tutor.on{background:var(--accent-2);border-color:var(--accent-2);color:#fff}.sbtn.explain.on{background:var(--honey);border-color:var(--honey);color:#fff}.sbtn.skip.on{background:var(--accent-4);border-color:var(--accent-4);color:#fff}
+.meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.tag{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:3px 8px;border-radius:999px}
+.tag.v{background:var(--accent-2-soft);color:#1f5b51}.tag.y{background:var(--honey-soft);color:#6e4a09}.tag.r{background:var(--accent-3-soft);color:#3a409a}
+.score{font-family:var(--mono);font-size:11px;color:#fff;background:var(--accent-2);border-radius:999px;padding:2px 8px}.score.s0{background:var(--ink-faint)}
+.card h3{font-family:var(--display);font-size:1.18rem;font-weight:600;margin:2px 0 4px;line-height:1.3}
+.authors{font-size:.84rem;color:var(--ink-faint);margin-bottom:4px}
+.insts{font-family:var(--mono);font-size:.76rem;color:var(--accent-3);margin-bottom:8px;font-weight:600}
+.abs{font-size:.95rem;color:var(--ink-soft)}.abs.clip{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.more{font-family:var(--mono);font-size:11px;color:var(--honey-deep);cursor:pointer;border:0;background:none;padding:4px 0}
+.foot{display:flex;gap:14px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.pick{display:flex;gap:6px;align-items:center;font-size:.85rem;font-weight:700;cursor:pointer}
+.lnk{font-size:.82rem;color:var(--honey-deep)} .lnk.oa{color:var(--accent-2)}
+.rels{font-family:var(--mono);font-size:10px;color:var(--ink-faint)}
+.empty{color:var(--ink-faint);font-style:italic;padding:26px 2px}
+</style></head><body><div class="wrap">
+<header class="head"><h1>Paper Digest</h1><p>Every paper from these venues — nothing filtered out. Skim, mark each <b>🔬 deep dive</b> or <b>📖 quick read</b> (or ✕ skip), then hit <b>⬇ Export triage</b> to save your picks. Use <b>★ relevant only</b> to collapse to keyword matches.</p></header>
+<div class="bar"><div class="row">
+  <input type="search" id="q" placeholder="search title / abstract / author…">
+  <button class="chip" id="relOnly">★ relevant only</button>
+  <button class="btn" id="copy">Copy picks</button>
+  <button class="btn" id="export" style="background:var(--accent-2);border-color:var(--accent-2)">⬇ Export triage</button>
+  <span class="count" id="count"></span>
+</div><div class="row" id="states" style="margin-top:8px"></div><div class="row" id="facets" style="margin-top:8px"></div></div>
+<div id="list"></div>
+<div class="empty" id="empty" style="display:none">No papers match.</div>
+</div>
+<!-- Empty template: this page expects a feed of papers in the same shape as one entry below.
+     Populate it yourself (a scraper, a manual list, whatever) and swap it into #data.
+     Shape: {venue, year, title, authors, institutions:[], abstract, topics:[], rel:[], score, link, oa, state, guide?} -->
+<script id="data" type="application/json">[]</script>
+<script>
+const P=JSON.parse(document.getElementById('data').textContent);
+const KEY='paperDigestState'; let ST=JSON.parse(localStorage.getItem(KEY)||'{}');
+function saveST(){localStorage.setItem(KEY,JSON.stringify(ST));}
+function eff(p){return ST[p.title]||p.state||'';}   // your local mark wins; else the pushed classification
+let st={q:'',v:new Set(),y:new Set(),rel:false,state:'todo'};
+const STATES=[['todo','To review'],['explain','🔬 Deep dive'],['tutor','📖 Quick read'],['skip','✕ Skipped'],['all','All']];
+const venues=[...new Set(P.map(p=>p.venue))].sort(), years=[...new Set(P.map(p=>String(p.year)))].sort().reverse();
+function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
+function counts(){const c={todo:0,tutor:0,explain:0,skip:0};P.forEach(p=>{c[eff(p)||'todo']++;});return c;}
+function stateBar(){const c=counts();document.getElementById('states').innerHTML=STATES.map(([k,l])=>`<button class="chip${st.state===k?' on':''}" data-st="${k}">${l} <span style="opacity:.55;font-family:var(--mono);font-size:11px">${k==='all'?P.length:c[k]}</span></button>`).join('');}
+function facets(){let h='<span class="rels">Venue</span>';
+  venues.forEach(v=>h+=`<button class="chip v${st.v.has(v)?' on':''}" data-v="${v}">${v}</button>`);
+  h+='<span class="rels" style="margin-left:8px">Year</span>';
+  years.forEach(y=>h+=`<button class="chip y${st.y.has(y)?' on':''}" data-y="${y}">${y}</button>`);
+  document.getElementById('facets').innerHTML=h;}
+function visible(){return P.filter(p=>{
+  if(st.state!=='all'&&(eff(p)||'todo')!==st.state)return false;
+  if(st.rel&&p.score===0)return false;
+  if(st.v.size&&!st.v.has(p.venue))return false;
+  if(st.y.size&&!st.y.has(String(p.year)))return false;
+  if(st.q){const b=(p.title+' '+p.abstract+' '+p.authors).toLowerCase();if(!b.includes(st.q))return false;}
+  return true;});}
+function card(p,i){const id='p'+i;const s=eff(p);
+  const topics=(p.topics||[]).map(t=>`<span class="tag r">${esc(t)}</span>`).join('');
+  const rels=p.rel&&p.rel.length?`<span class="rels">matches: ${p.rel.map(esc).join(', ')}</span>`:'';
+  const oa=p.oa?`<a class="lnk oa" href="${p.oa}" target="_blank">free PDF ↗</a>`:'';
+  const lnk=p.link?`<a class="lnk" href="${p.link}" target="_blank">page ↗</a>`:'';
+  const gd=p.guide?`<a class="lnk" href="${p.guide}" target="_blank" style="color:var(--accent-3);font-weight:800">📖 read explainer →</a>`:'';
+  return `<div class="card${s?(' '+s):''}" data-t="${esc(p.title)}">
+    <div class="meta"><span class="score s${p.score?'':'0'}">${p.score} hit${p.score===1?'':'s'}</span>
+      <span class="tag v">${esc(p.venue)}</span><span class="tag y">${p.year}</span>${topics}</div>
+    <h3>${esc(p.title)}</h3><div class="authors">${esc(p.authors)||'—'}</div>${(p.institutions&&p.institutions.length)?'<div class="insts">'+p.institutions.map(esc).join(' · ')+'</div>':''}
+    <div class="abs clip" id="${id}">${esc(p.abstract)||'<i>no abstract found</i>'}</div>
+    ${p.abstract&&p.abstract.length>320?`<button class="more" data-x="${id}">show more ▾</button>`:''}
+    <div class="foot"><div class="states" data-t2="${esc(p.title)}"><button class="sbtn explain${s==='explain'?' on':''}" data-s="explain">🔬 deep dive</button><button class="sbtn tutor${s==='tutor'?' on':''}" data-s="tutor">📖 quick read</button><button class="sbtn skip${s==='skip'?' on':''}" data-s="skip">✕ skip</button></div>${gd}${oa}${lnk}${rels}</div></div>`;}
+function render(){stateBar();facets();const vis=visible();
+  document.getElementById('list').innerHTML=vis.map(card).join('');
+  document.getElementById('empty').style.display=vis.length?'none':'block';
+  document.getElementById('count').textContent=vis.length+' shown';
+  document.getElementById('copy').textContent='Copy picks ('+(counts().tutor+counts().explain)+')';}
+document.getElementById('q').addEventListener('input',e=>{st.q=e.target.value.toLowerCase();render();});
+document.getElementById('relOnly').addEventListener('click',e=>{st.rel=!st.rel;e.target.classList.toggle('on',st.rel);render();});
+document.getElementById('states').addEventListener('click',e=>{const b=e.target.closest('.chip');if(b){st.state=b.dataset.st;render();}});
+document.getElementById('facets').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;
+  if(b.dataset.v){st.v.has(b.dataset.v)?st.v.delete(b.dataset.v):st.v.add(b.dataset.v);}
+  if(b.dataset.y){st.y.has(b.dataset.y)?st.y.delete(b.dataset.y):st.y.add(b.dataset.y);}render();});
+document.getElementById('list').addEventListener('click',e=>{
+  if(e.target.dataset.x){const el=document.getElementById(e.target.dataset.x);el.classList.toggle('clip');e.target.textContent=el.classList.contains('clip')?'show more ▾':'show less ▴';return;}
+  const sb=e.target.closest('.sbtn');
+  if(sb){const t=sb.closest('.states').dataset.t2,s=sb.dataset.s;if(ST[t]===s)delete ST[t];else ST[t]=s;saveST();render();}});
+document.getElementById('copy').addEventListener('click',()=>{
+  const ex=P.filter(p=>eff(p)==='explain').map(p=>'  - '+p.title), tu=P.filter(p=>eff(p)==='tutor').map(p=>'  - '+p.title);
+  const t='🔬 DEEP DIVE (full harness):\n'+(ex.join('\n')||'  (none)')+'\n\n📖 QUICK READ (single pass):\n'+(tu.join('\n')||'  (none)');
+  navigator.clipboard.writeText(t).then(()=>{const b=document.getElementById('copy');b.textContent='Copied!';setTimeout(render,1200);});});
+document.getElementById('export').addEventListener('click',()=>{
+  const marks=P.filter(p=>eff(p)).map(p=>({title:p.title,state:eff(p),venue:p.venue,year:p.year,topics:p.topics,score:p.score,rel:p.rel,abstract:(p.abstract||'').slice(0,1500)}));
+  const RT=JSON.parse(localStorage.getItem('paperRatings')||'{}');
+  const sl=t=>t.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40);
+  const ratings=P.filter(p=>RT[sl(p.title)]&&RT[sl(p.title)].score).map(p=>{const r=RT[sl(p.title)];return{title:p.title,rating:r.score,delta:r.delta||'',venue:p.venue,year:p.year,topics:p.topics,abstract:(p.abstract||'').slice(0,1500)};});
+  const blob=JSON.stringify({exported:new Date().toISOString(),marks:marks,ratings:ratings},null,1);
+  try{navigator.clipboard.writeText(blob);}catch(e){}
+  const a=document.createElement('a');a.href='data:application/json;charset=utf-8,'+encodeURIComponent(blob);a.download='triage.json';document.body.appendChild(a);a.click();a.remove();
+  const b=document.getElementById('export');b.textContent='Exported '+marks.length+' marks + '+ratings.length+' ratings';setTimeout(()=>b.textContent='⬇ Export triage',1800);});
+render();
+</script></body></html>
