@@ -33,7 +33,7 @@ arca:
   # booktitle: "Proceedings of the 19th USENIX Conference on Operating Systems Design and Implementation"
   # location: "Seattle, WA, USA"
   # series: "OSDI '26"
-  pdf:
+  pdf: /assets/publications/osdi26.pdf
   authors:
     - asrivatsan
     - ydeng
