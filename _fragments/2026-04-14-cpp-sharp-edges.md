@@ -10,7 +10,7 @@ tags:
 In my time as a Five Rings intern mentor, I would send out a "C++ Question of the Day" on Slack every morning
 to give the interns something to think about in their downtime. As the weeks went on, I tried to make them trickier
 and more corner-casey{% sidenote 'quiz' "I've turned this into [an online quiz](/2026/04/20/cpp-quiz.html)!" %}.
-So, I had considered adding a questoon on [arrow chaining](https://stackoverflow.com/questions/4923270/is-operator-chained-for-pointers),
+So, I had considered adding a question on [arrow chaining](https://stackoverflow.com/questions/4923270/is-operator-chained-for-pointers),
 but I felt like the dummy code I was writing seemed too unlikely to happen in practice and ditched it.
 
 Well, nevermind! I got bit by this the other day, so as punishment, I must write about it.
