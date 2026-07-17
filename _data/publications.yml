@@ -9,7 +9,7 @@ arom:
     <br/><br/>
     Rather than making LtRAM look like DRAM, we propose redesigning the hardware/software interface to offload more responsibility to the operating system. This design hinges on one central property, Application Read-Only Memory (AROM): LtRAM pages are read-only to applications and written only by the OS during page migrations. AROM is enforced by leveraging copy-on-write (CoW): application writes to LtRAM trigger a fault that migrates the page back to DRAM before the store is applied. This invariant allows us to shift LtRAM management from the on-DIMM controller to the operating system, drastically simplifying the DIMM's hardware. With this approach, we aim to match the performance of pure DRAM on read-mostly workloads while delivering LtRAM's density and cost advantages.
     </p>"
-  venue: "Under Review"
+  venue: "Workshop on Disruptive Memory Systems (DIMES)"
   year: 2026
   authors:
     - hsshim
