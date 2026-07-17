@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<!-- RDD/Spark field guide — Resilient Distributed Datasets: A Fault-Tolerant Abstraction for
+     In-Memory Cluster Computing (Zaharia, Chowdhury, Das, Dave, Ma, McCauley, Franklin,
+     Shenker, Stoica — NSDI 2012). Built in the "field guide" format.
+     Semantic colors: teal = healthy/cached RDD state, cheap (narrow-dependency) recovery ·
+     indigo = Spark scheduler/runtime machinery · honey = the core rule/callout ·
+     terracotta = lost state that must be recomputed widely / what breaks. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Remembering the Recipe, Not the Cake — RDDs &amp; Spark, a Field Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Mulish:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ============ DESIGN TOKENS ============ */
+:root{
+  --paper:#FBF6EC; --paper-2:#F3EADA; --card:#FFFDF8;
+  --ink:#332C24; --ink-soft:#6E6456; --ink-faint:#9A8E7C;
+  --line:#E7DBC6; --line-strong:#D8C8AC;
+  --honey:#E8A33D; --honey-deep:#C27D14; --honey-soft:#FBEACB;
+  --accent-2:#2C8C7C; --accent-2-soft:#DCEFE9;      /* teal    = healthy/cached, cheap recovery */
+  --accent-3:#5A61B4; --accent-3-soft:#E6E6F6;      /* indigo  = Spark scheduler machinery      */
+  --accent-4:#C0563B; --accent-4-soft:#F7E1D8;      /* terracotta = lost / wide-recompute / breaks */
+  --shadow-sm:0 1px 2px rgba(80,60,30,.06), 0 2px 8px rgba(80,60,30,.05);
+  --shadow-md:0 4px 14px rgba(90,66,28,.10), 0 12px 30px rgba(90,66,28,.07);
+  --shadow-lg:0 10px 40px rgba(90,66,28,.14);
+  --radius:18px; --radius-sm:12px; --maxw:1080px;
+  --display:"Fraunces",Georgia,serif;
+  --body:"Mulish",-apple-system,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:var(--body);color:var(--ink);line-height:1.65;background:var(--paper);
+  background-image:
+    radial-gradient(circle at 12% 8%, rgba(44,140,124,.05), transparent 40%),
+    radial-gradient(circle at 88% 22%, rgba(90,97,180,.05), transparent 42%),
+    radial-gradient(circle at 50% 120%, rgba(232,163,61,.06), transparent 55%);
+  -webkit-font-smoothing:antialiased;}
+h1,h2,h3,h4{font-family:var(--display);font-weight:600;line-height:1.18;color:var(--ink);margin:0 0 .5em}
+p{margin:0 0 1em}
+a{color:var(--honey-deep);text-decoration:none;border-bottom:1.5px solid var(--honey-soft);transition:border-color .2s}
+a:hover{border-color:var(--honey)}
+strong{font-weight:700;color:#231d16}
+em{color:var(--ink-soft)}
+code{font-family:var(--mono);font-size:.92em;background:var(--paper-2);padding:1px 6px;border-radius:5px}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 22px}
+
+/* HERO */
+.hero{position:relative;overflow:hidden;padding:64px 0 52px;background:linear-gradient(180deg,#FFFBF2 0%,var(--paper) 100%);border-bottom:1px solid var(--line)}
+.hero::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:repeating-linear-gradient(0deg,transparent,transparent 31px,rgba(90,97,180,.05) 31px,rgba(90,97,180,.05) 32px);
+  -webkit-mask-image:linear-gradient(180deg,transparent,#000 30%,#000 60%,transparent);mask-image:linear-gradient(180deg,transparent,#000 30%,#000 60%,transparent);}
+.hero .wrap{position:relative}
+.eyebrow{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--honey-deep);background:var(--honey-soft);padding:7px 14px;border-radius:999px;border:1px solid #F0DCB0;margin-bottom:22px;}
+.eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--honey);box-shadow:0 0 0 4px rgba(232,163,61,.2)}
+.hero h1{font-size:clamp(2.1rem,5.6vw,3.7rem);font-weight:600;letter-spacing:-.015em;max-width:22ch;margin-bottom:.3em}
+.hero h1 .swash{font-style:italic;color:var(--accent-2);font-weight:500}
+.hero .lede{font-size:clamp(1.05rem,2.2vw,1.32rem);color:var(--ink-soft);max-width:52ch;margin-bottom:30px}
+.hero-meta{display:flex;flex-wrap:wrap;gap:10px;font-family:var(--mono);font-size:12.5px;color:var(--ink-soft)}
+.hero-meta span{background:var(--card);border:1px solid var(--line);padding:6px 12px;border-radius:999px}
+.rule-plaque{margin-top:34px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;background:var(--card);
+  border:1.5px solid var(--line-strong);border-radius:var(--radius);padding:22px 26px;box-shadow:var(--shadow-md);max-width:720px;position:relative;}
+.rule-plaque::after{content:"THE CORE ANALOGY";position:absolute;top:-11px;left:24px;font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;
+  color:#fff;background:var(--accent-3);padding:3px 10px;border-radius:6px;}
+.rule-plaque .glyph{font-size:2.6rem}
+.rule-plaque p{margin:0;font-family:var(--display);font-size:1.14rem;line-height:1.4}
+.rule-plaque .ro{color:var(--accent-2);font-weight:600}
+.rule-plaque .wo{color:var(--accent-4);font-weight:600}
+
+/* TAB NAV */
+.tabbar-outer{position:sticky;top:0;z-index:50;background:rgba(251,246,236,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.tabbar{display:flex;gap:6px;overflow-x:auto;padding:11px 22px;max-width:var(--maxw);margin:0 auto;scrollbar-width:none}
+.tabbar::-webkit-scrollbar{display:none}
+.tab-btn{flex:0 0 auto;font-family:var(--body);font-weight:700;font-size:14px;color:var(--ink-soft);background:transparent;border:1.5px solid transparent;
+  border-radius:999px;padding:8px 16px;cursor:pointer;white-space:nowrap;transition:all .18s;display:flex;align-items:center;gap:7px;}
+.tab-btn .n{font-family:var(--mono);font-size:11px;opacity:.6}
+.tab-btn:hover{color:var(--ink);background:var(--paper-2)}
+.tab-btn.active{color:#fff;background:var(--ink);border-color:var(--ink)}
+.tab-btn.active .n{opacity:.7;color:var(--honey)}
+
+/* PANELS */
+.tab-panel{display:none;animation:fade .4s ease}
+.tab-panel.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.panel-head{padding:46px 0 8px}
+.panel-head .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--honey-deep);margin-bottom:12px}
+.panel-head h2{font-size:clamp(1.9rem,4vw,2.8rem);letter-spacing:-.01em;margin-bottom:.25em}
+.panel-head .sub{font-size:1.1rem;color:var(--ink-soft);max-width:62ch}
+
+/* PROSE / CARDS */
+.prose{max-width:74ch}
+.prose p{font-size:1.03rem}
+.prose h3{font-size:1.5rem;margin-top:30px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px 28px;box-shadow:var(--shadow-sm);margin:18px 0}
+.card h3{font-size:1.3rem;margin-bottom:.4em}
+.seq{counter-reset:seq;list-style:none;padding:0;margin:18px 0}
+.seq li{position:relative;padding:0 0 18px 52px;margin:0}
+.seq li::before{counter-increment:seq;content:counter(seq,decimal-leading-zero);position:absolute;left:0;top:-2px;font-family:var(--mono);
+  font-size:13px;font-weight:700;color:var(--honey-deep);background:var(--honey-soft);border:1px solid #EFD9AC;border-radius:8px;width:34px;height:30px;
+  display:flex;align-items:center;justify-content:center;}
+
+/* PRIMER ACCORDION */
+.primer-grid{display:grid;grid-template-columns:1fr;gap:12px;margin:26px 0}
+.primer{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;transition:box-shadow .2s,border-color .2s}
+.primer[open]{box-shadow:var(--shadow-md);border-color:var(--line-strong)}
+.primer summary{list-style:none;cursor:pointer;padding:16px 20px;display:flex;align-items:center;gap:14px;font-weight:700;font-size:1.04rem}
+.primer summary::-webkit-details-marker{display:none}
+.primer summary .pnum{flex:0 0 auto;width:30px;height:30px;border-radius:9px;background:var(--accent-3-soft);color:var(--accent-3);font-family:var(--mono);font-size:13px;
+  display:flex;align-items:center;justify-content:center;font-weight:700;}
+.primer summary .chev{margin-left:auto;color:var(--ink-faint);transition:transform .25s;flex:0 0 auto;font-family:var(--mono)}
+.primer[open] summary .chev{transform:rotate(180deg)}
+.primer .body{padding:2px 20px 20px 64px;color:var(--ink-soft);font-size:1rem}
+.primer .body p:last-child{margin-bottom:0}
+.primer .ready{margin-top:14px;padding:12px 16px;background:var(--accent-2-soft);border-left:3px solid var(--accent-2);border-radius:0 10px 10px 0;color:#1f5b51;font-size:.96rem}
+.primer .ready b{color:#16463e}
+
+/* ANALOGY CARDS */
+.analogy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px;margin:24px 0}
+.analogy{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:24px;position:relative;box-shadow:var(--shadow-sm);transition:transform .2s,box-shadow .2s;overflow:hidden}
+.analogy:hover{transform:translateY(-4px);box-shadow:var(--shadow-md)}
+.analogy .ill{width:100%;height:120px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;background:var(--paper-2);border-radius:12px;border:1px dashed var(--line-strong)}
+.analogy .ill svg{width:140px;height:96px}
+.analogy h3{font-size:1.22rem;margin-bottom:.3em}
+.analogy .term{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--honey-deep);display:block;margin-bottom:8px}
+.analogy p{font-size:.98rem;color:var(--ink-soft);margin-bottom:.8em}
+.analogy .breaks{font-size:.9rem;color:var(--ink-faint);border-top:1px dashed var(--line-strong);padding-top:10px;margin-top:4px}
+.analogy .breaks b{color:var(--accent-4)}
+
+/* color chips */
+.mem-chip{display:inline-block;font-family:var(--mono);font-size:.82em;font-weight:700;padding:1px 8px;border-radius:6px;vertical-align:baseline}
+.chip-live{background:var(--accent-2-soft);color:#1f5b51}
+.chip-rule{background:var(--honey-soft);color:#6e4a09}
+.chip-vllm{background:var(--accent-3-soft);color:#3a409a}
+.chip-old{background:var(--accent-4-soft);color:#9a3a22}
+
+/* CALLOUTS */
+.callout{border-radius:var(--radius-sm);padding:16px 20px;margin:18px 0;font-size:1rem;display:flex;gap:14px;align-items:flex-start}
+.callout .ic{flex:0 0 auto;font-size:1.15rem;line-height:1.3;font-weight:700}
+.callout.takeaway{background:var(--honey-soft);border:1px solid #EFD9AC;color:#6e4a09}
+.callout.why{background:var(--accent-2-soft);border:1px solid #B9E0D6;color:#1f5b51}
+.callout.note{background:var(--paper-2);border:1px solid var(--line-strong);color:var(--ink-soft)}
+.callout.warn{background:var(--accent-4-soft);border:1px solid #e3b4a5;color:#9a3a22}
+.callout b{color:inherit}
+
+/* FIGURE */
+figure.viz{margin:30px 0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow-md)}
+figure.viz figcaption{margin-top:18px;font-size:.94rem;color:var(--ink-soft);border-top:1px dashed var(--line-strong);padding-top:14px}
+.viz-title{font-family:var(--display);font-size:1.25rem;font-weight:600;margin-bottom:4px}
+.viz-kicker{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:18px}
+.legend{display:flex;flex-wrap:wrap;gap:16px;margin:14px 0 22px;font-size:.9rem;font-weight:600}
+.legend span{display:inline-flex;align-items:center;gap:7px;color:var(--ink-soft)}
+.legend i{width:14px;height:14px;border-radius:4px;display:inline-block}
+figure.viz svg.full{width:100%;height:auto;display:block}
+
+/* FLOW DIAGRAM */
+.flow-row{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;justify-content:center}
+.node{background:#fff;border:1.5px solid var(--line-strong);border-radius:14px;padding:14px 16px;min-width:150px;max-width:240px;box-shadow:var(--shadow-sm);position:relative}
+.node .nt{font-weight:700;font-size:.98rem;margin-bottom:4px}
+.node .nd{font-size:.85rem;color:var(--ink-soft);line-height:1.45}
+.node.n-live{border-color:#9fd2c7;background:var(--accent-2-soft)}
+.node.n-vllm{border-color:#bcbfe8;background:var(--accent-3-soft)}
+.node.n-old{border-color:#e3b4a5;background:var(--accent-4-soft)}
+.node.n-rule{border-color:var(--honey);background:var(--honey-soft)}
+.flow-arrow{align-self:center;color:var(--ink-faint);font-size:1.4rem;display:flex;align-items:center;font-family:var(--mono)}
+
+/* TABLE */
+.tbl{width:100%;border-collapse:collapse;margin:18px 0;font-size:.92rem}
+.tbl th,.tbl td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line)}
+.tbl th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);font-weight:700}
+.tbl td.mono{font-family:var(--mono);font-size:.86rem}
+.tbl tr:hover td{background:var(--paper-2)}
+.tbl .best td{background:var(--accent-3-soft)}
+.tbl .best:hover td{background:#dcdef3}
+
+/* BAR CHART */
+.bars{margin:8px 0}
+.bar-row{display:grid;grid-template-columns:150px 1fr;gap:14px;align-items:center;margin:14px 0}
+.bar-label{text-align:right;font-weight:700;font-size:.92rem}
+.bar-label small{display:block;font-family:var(--mono);font-weight:500;font-size:10.5px;color:var(--ink-faint)}
+.bar-track{position:relative;height:38px;background:var(--paper-2);border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.bar-fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:10px;transition:width 1.2s cubic-bezier(.16,1,.3,1);display:flex;align-items:center;justify-content:flex-end;padding-right:10px}
+.bar-fill span{font-family:var(--mono);font-size:12px;font-weight:700;color:#fff;white-space:nowrap;opacity:0;transition:opacity .4s .6s}
+.bars.shown .bar-fill span{opacity:1}
+.bf-vllm{background:linear-gradient(90deg,#6f76c9,#5A61B4)}
+.bf-live{background:linear-gradient(90deg,#3aa392,#2C8C7C)}
+.bf-old{background:linear-gradient(90deg,#cf6f56,#C0563B)}
+
+/* BLOCK / LINEAGE EXPLORER (interactive) */
+.blk-viz{display:grid;grid-template-columns:1fr;gap:22px}
+.blk-scheme{border:1px solid var(--line);border-radius:14px;padding:16px 18px;background:#fff}
+.blk-scheme h4{margin:0 0 10px;font-size:.98rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.blk-scheme h4 .tagpill{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:999px;font-weight:700}
+.blk-grid{display:grid;gap:3px;margin-bottom:4px}
+.blk{aspect-ratio:1;border-radius:3px;transition:background .15s,opacity .15s,border-color .15s;position:relative}
+.blk.pending{background:var(--paper-2);border:1px solid var(--line)}
+.blk.used{background:var(--accent-2)}
+.blk.partial{background:linear-gradient(90deg,var(--accent-2) var(--pct,50%),var(--accent-2-soft) var(--pct,50%))}
+.blk.reserved-empty{background:repeating-linear-gradient(45deg,var(--honey-soft),var(--honey-soft) 4px,#f3dfab 4px,#f3dfab 8px);border:1px dashed var(--honey-deep)}
+.blk.free-pool{background:transparent;border:1.5px dashed var(--line-strong);opacity:.55}
+.blk.lost{background:repeating-linear-gradient(45deg,var(--accent-4-soft),var(--accent-4-soft) 4px,#eccab9 4px,#eccab9 8px);border:1px dashed var(--accent-4)}
+.blk.ckpt::after{content:"";position:absolute;inset:0;border:2px solid var(--honey-deep);border-radius:3px;box-shadow:0 0 0 1px var(--honey-deep) inset}
+.blk-controls{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:18px 0 6px}
+.blk-controls input[type=range]{flex:1;min-width:200px;accent-color:var(--accent-3)}
+.blk-readout{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.pstat{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-family:var(--mono);font-size:.85rem;min-width:130px}
+.pstat b{display:block;font-size:1.3rem;color:var(--ink);font-family:var(--display)}
+.pverdict{font-weight:700;font-size:1rem;padding:12px 16px;border-radius:10px;margin-top:12px;transition:.2s}
+.pverdict.opt{background:var(--accent-2-soft);color:#16463e;border:1px solid #9fd2c7}
+.pverdict.sub{background:var(--paper-2);color:var(--ink-soft);border:1px solid var(--line-strong)}
+.pverdict.bad{background:var(--accent-4-soft);color:#9a3a22;border:1px solid #e3b4a5}
+.preset-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.tbtn{font-family:var(--body);font-weight:700;font-size:.85rem;border:1.5px solid var(--line-strong);background:#fff;border-radius:10px;padding:8px 12px;cursor:pointer;transition:all .15s}
+.tbtn:hover{border-color:var(--accent-3);color:var(--accent-3)}
+.tbtn.on{background:var(--accent-3);border-color:var(--accent-3);color:#fff}
+
+/* FAQ-style practice */
+.faq details{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);margin:10px 0;overflow:hidden}
+.faq details[open]{box-shadow:var(--shadow-sm);border-color:var(--line-strong)}
+.faq summary{cursor:pointer;list-style:none;padding:16px 20px;font-weight:700;font-size:1.03rem;display:flex;gap:12px;align-items:center}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary .q{font-family:var(--mono);color:var(--honey-deep);font-size:.9rem;flex:0 0 auto}
+.faq summary .chev{margin-left:auto;color:var(--ink-faint);transition:transform .25s;font-family:var(--mono)}
+.faq details[open] summary .chev{transform:rotate(180deg)}
+.faq .a{padding:0 20px 18px 54px;color:var(--ink-soft);font-size:1rem}
+
+/* PRACTICE */
+.prob{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:20px 22px;margin:14px 0;box-shadow:var(--shadow-sm)}
+.prob .ptag{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:6px;margin-bottom:10px;font-weight:700;background:var(--accent-3-soft);color:#3a409a}
+.prob .qtext{font-weight:600;margin-bottom:8px}
+.prob details{margin-top:6px}
+.prob summary{cursor:pointer;color:var(--honey-deep);font-weight:700;font-size:.92rem;list-style:none}
+.prob summary::-webkit-details-marker{display:none}
+.prob summary::before{content:"▸ ";font-family:var(--mono)}
+.prob details[open] summary::before{content:"▾ "}
+.prob .ans{margin-top:10px;padding:14px 16px;background:var(--paper-2);border-radius:10px;font-size:.96rem;color:var(--ink-soft)}
+
+/* CODE */
+pre.sketch{background:#2c2620;color:#f3ead9;border-radius:14px;padding:20px 22px;overflow-x:auto;font-family:var(--mono);font-size:.86rem;line-height:1.7;margin:12px 0;box-shadow:var(--shadow-md)}
+pre.sketch .kw{color:#e8a33d} pre.sketch .cm{color:#8a9a7c;font-style:italic} pre.sketch .hl{color:#7e8ad6}
+
+/* GLOSSARY */
+.gloss{columns:2;column-gap:26px}
+.gloss .term-def{break-inside:avoid;margin:0 0 14px;font-size:.95rem}
+.gloss .term-def b{display:block;color:var(--ink);font-family:var(--display);font-size:1rem}
+.gloss .term-def span{color:var(--ink-soft)}
+.subhead{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--honey-deep);margin:28px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.read-item{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:18px 20px;margin:12px 0}
+.read-item h4{font-size:1.05rem;margin-bottom:6px}
+.read-item .meta{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-bottom:8px}
+.read-item p{font-size:.94rem;color:var(--ink-soft);margin:0}
+.diff{display:inline-block;font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:5px;font-weight:700;margin-left:6px}
+.diff.easy{background:var(--accent-2-soft);color:#1f5b51}
+.diff.med{background:var(--honey-soft);color:#6e4a09}
+.diff.hard{background:var(--accent-4-soft);color:#9a3a22}
+
+.foot{margin-top:60px;border-top:1px solid var(--line);background:var(--paper-2)}
+.foot .wrap{padding:30px 22px;font-size:.9rem;color:var(--ink-soft);display:flex;flex-wrap:wrap;gap:8px 28px}
+.foot b{color:var(--ink)}
+
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .6s,transform .6s}
+.reveal.in{opacity:1;transform:none}
+@media(max-width:820px){.blk-readout{flex-direction:column}.gloss{columns:1}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}.reveal{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow"><span class="dot"></span>NSDI 2012 · A Field Guide</span>
+    <h1>Remembering the <span class="swash">recipe</span>, not the <span class="swash" style="color:var(--accent-4)">cake</span></h1>
+    <p class="lede">Every cluster job used to reuse data by writing it to disk and reading it back — even between steps of the same iterative algorithm. <strong>RDDs</strong> keep data in RAM across operations instead, and recover from failure not by copying it, but by remembering exactly how to rebuild it.</p>
+    <div class="hero-meta">
+      <span>📄 Zaharia, Chowdhury, et al. · "Resilient Distributed Datasets" · NSDI 2012</span>
+      <span>🎓 Intro systems/CS background assumed — the primers cover the rest</span>
+      <span>⏱ ~25 min read</span>
+    </div>
+    <div class="rule-plaque">
+      <div class="glyph">📜</div>
+      <p><span class="ro">Log the recipe, not the cake.</span><br><em style="font-size:.9rem">Remember the deterministic steps that built a dataset — recompute only the piece you actually lost, instead of <span class="wo">replicating</span> everything just in case.</em></p>
+    </div>
+  </div>
+</header>
+
+<!-- ============ TAB NAV ============ -->
+<nav class="tabbar-outer">
+  <div class="tabbar" role="tablist">
+    <button class="tab-btn active" data-tab="start"><span class="n">01</span>Start Here</button>
+    <button class="tab-btn" data-tab="idea"><span class="n">02</span>The Big Idea</button>
+    <button class="tab-btn" data-tab="analogies"><span class="n">03</span>Analogies</button>
+    <button class="tab-btn" data-tab="how"><span class="n">04</span>How It Works</button>
+    <button class="tab-btn" data-tab="example"><span class="n">05</span>Worked Example</button>
+    <button class="tab-btn" data-tab="results"><span class="n">06</span>Key Results</button>
+    <button class="tab-btn" data-tab="practice"><span class="n">07</span>Practice</button>
+    <button class="tab-btn" data-tab="reference"><span class="n">08</span>Reference</button>
+  </div>
+</nav>
+
+<main>
+
+<!-- ============ TAB 1: START HERE ============ -->
+<section class="tab-panel active" id="tab-start">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Before you begin</div>
+      <h2>Just enough cluster-computing background</h2>
+      <p class="sub">If you've used Hadoop, HDFS, or heard of a DAG scheduler, most of this will be review — skim it. If not, these four cards cover exactly what the paper assumes. Collapsed by default; open whatever's unfamiliar.</p>
+    </div>
+
+    <div class="primer-grid">
+      <details class="primer" open>
+        <summary><span class="pnum">1</span>MapReduce, Dryad, and why "reuse" means round-tripping through disk<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>MapReduce (Dean &amp; Ghemawat) and Dryad split a computation into high-level parallel operators, hiding work distribution and fault tolerance from the programmer. Fault tolerance in these systems is cheap because it's built on <b>re-execution</b>: if a task fails, just re-run it from its original input (Section 1).</p>
+          <p>The catch: the <i>only</i> sanctioned way to pass data from one job to the next is to write it out to a distributed filesystem (e.g. HDFS) and read it back in the next job. That costs disk I/O, replication, and serialization <i>every single hop</i> (Section 1). For a one-shot batch job, fine. For an <b>iterative</b> algorithm that reruns the same computation over the same data 10–100 times — gradient descent, PageRank, k-means — you pay that toll on every iteration, even though nothing about the data actually needs to leave memory.</p>
+          <div class="ready"><b>Now you're ready:</b> the entire paper is about closing this one gap — letting a cluster job keep data resident in RAM across operations, safely.</div>
+        </div>
+      </details>
+      <details class="primer">
+        <summary><span class="pnum">2</span>HDFS, blocks, and data locality<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>The Hadoop Distributed File System stores a file as fixed-size <b>blocks</b> (256 MB in this paper's experiments), replicated across several machines for durability. A scheduler tries to run each task on a machine that already holds the block it needs — <b>data locality</b> — to avoid shipping data over the network.</p>
+          <p>RDDs inherit this idea directly: every RDD can report <b>preferred locations</b> for each of its partitions (e.g., "this partition's data lives on nodes A and B"), and Spark's scheduler uses that to place tasks (Section 5.1, Table 3).</p>
+          <div class="ready"><b>Now you're ready:</b> when the paper says an RDD "knows which machines each block is on," this is the mechanism.</div>
+        </div>
+      </details>
+      <details class="primer">
+        <summary><span class="pnum">3</span>DAGs and lazy evaluation<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>A <b>directed acyclic graph (DAG)</b> of operations lets a system record a computation's structure before running any of it, so it can optimize across steps instead of executing them eagerly one at a time. DryadLINQ builds such a DAG from a program's high-level operators.</p>
+          <p>Spark does the same: an operation that only <i>defines</i> a new dataset (without computing it yet) is <b>lazy</b>. Nothing runs until something actually needs an output. This is what lets Spark fuse several lazy steps into a single pass over the data rather than materializing every intermediate result (Section 2.2, Section 5.1).</p>
+          <div class="ready"><b>Now you're ready:</b> in the code examples ahead, a line like <code>lines.filter(...)</code> does zero cluster work by itself — it just extends the DAG.</div>
+        </div>
+      </details>
+      <details class="primer">
+        <summary><span class="pnum">4</span>Closures — how "code" gets shipped to a cluster<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>Spark's API is embedded in Scala. Writing <code>rdd.filter(x => x.contains(query))</code> passes a <b>closure</b> — a function literal that captures variables (here, <code>query</code>) from its surrounding scope. Spark serializes each closure as a Java object and ships it to worker machines, so the same user-written function can run against remote partitions of data (Section 3, footnote 2).</p>
+          <p>You don't need Scala fluency for what follows — just keep in mind that the little snippets you'll see (<code>map</code>, <code>filter</code>, <code>reduce</code>) are ordinary functions being shipped across the network, not magic.</p>
+          <div class="ready"><b>Now you're ready:</b> "transformation" in the next tabs just means "one of these shippable functions, applied to every element of a dataset."</div>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 2: THE BIG IDEA ============ -->
+<section class="tab-panel" id="tab-idea">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">The whole story in one place</div>
+      <h2>RDDs, in a nutshell</h2>
+      <p class="sub">The problem, the fix, and the result.</p>
+    </div>
+    <div class="prose">
+      <p>Cluster frameworks like MapReduce and Dryad give you rich parallel operators, but the only way to reuse data across computations is to write it to stable storage and read it back — expensive I/O, replication, and serialization on every hop, paid again and again by iterative algorithms and interactive queries that touch the same data repeatedly (Section 1). Systems that instead keep data in mutable shared memory (distributed shared memory, key-value stores, Piccolo) solve the reuse problem, but their fault tolerance requires either replicating every write across machines or logging updates and rolling back a checkpoint — both expensive, because they move real data over a network whose bandwidth is far below RAM's (Section 1, Table 1).</p>
+      <p><strong>Resilient Distributed Datasets (RDDs)</strong> cut a different path (Section 2.1): an RDD is a read-only, partitioned collection that can <i>only</i> be built by loading data from stable storage or by applying a deterministic <b>transformation</b> (map, filter, join, …) to existing RDDs. Because the only way to "write" one is through a bulk, deterministic operation, Spark never needs a second physical copy for safety — it just remembers the recipe (<b>lineage</b>): which transformation, applied to which parent. If a partition is lost, Spark re-applies the recipe to rebuild <i>just that partition</i>, in parallel with everything else that's still healthy.</p>
+      <p><strong>The payoff:</strong> in the system built on this idea, <strong>Spark</strong>, iterative machine learning and graph workloads run up to <b>20×</b> faster than Hadoop (Section 6.1), a production analytics report sped up <b>40×</b> (Section 6.5), and Spark can interactively query a 1 TB dataset in <b>5–7 seconds</b> (Section 6.6) — while the same restricted abstraction turns out to be expressive enough to implement MapReduce, Pregel, HaLoop, and SQL-style queries as small libraries on top of one runtime (Section 7.1).</p>
+    </div>
+
+    <div class="card" style="background:var(--honey-soft);border-color:#EFD9AC">
+      <h3 style="color:#6e4a09">🍯 Key takeaways</h3>
+      <ul style="margin:0;padding-left:20px;color:#6e4a09">
+        <li>Prior systems pay disk I/O, replication, and serialization <b>every time</b> data crosses between jobs; RDDs let you <b>persist</b> data in memory and reuse it directly.</li>
+        <li>An RDD can only be built via <b>deterministic bulk transformations</b> — this restriction is exactly what makes it cheap to reconstruct.</li>
+        <li><b>Lineage</b> (the transformation recipe) is typically kilobytes, even for datasets spanning 100 GB (Section 6.3) — log the recipe, not the cake.</li>
+        <li><b>Narrow dependencies</b> (map, filter) recover cheaply and in parallel; <b>wide dependencies</b> (groupByKey, join) can require recomputing an entire ancestor.</li>
+        <li>Immutability is also what makes speculative "backup tasks" for straggling machines safe — nothing to corrupt (Section 2.3).</li>
+        <li>Result: up to <b>20–40×</b> speedups, and one abstraction that reproduces MapReduce, Pregel, and HaLoop as ~200-line libraries (Section 7.1).</li>
+      </ul>
+    </div>
+
+    <!-- SIGNATURE FIGURE -->
+    <figure class="viz reveal">
+      <div class="viz-title">The whole paper in one picture</div>
+      <div class="viz-kicker">how much faster Spark ran than the old, disk-round-trip way — by workload</div>
+      <div class="legend">
+        <span><i style="background:var(--accent-2)"></i> Spark's speedup over the prior approach</span>
+      </div>
+      <div class="bars" id="headlineBars">
+        <div class="bar-row"><div class="bar-label">Logistic regression<small>subsequent iterations, 100 machines</small></div><div class="bar-track"><div class="bar-fill bf-live" data-w="63.3"><span>25.3×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">K-means<small>subsequent iterations, 100 machines</small></div><div class="bar-track"><div class="bar-fill bf-live" data-w="8"><span>3.2×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">PageRank<small>+ consistent partitioning, 30 nodes</small></div><div class="bar-track"><div class="bar-fill bf-live" data-w="18.5"><span>7.4×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">Conviva report<small>200 GB, production analytics</small></div><div class="bar-track"><div class="bar-fill bf-live" data-w="100"><span>40×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">1 TB interactive query<small>in-memory vs. reading from disk</small></div><div class="bar-track"><div class="bar-fill bf-live" data-w="60.8"><span>~24×</span></div></div></div>
+      </div>
+      <figcaption><b>Read it top to bottom:</b> bar length is each workload's speedup relative to the prior disk-round-trip approach (Hadoop, or reading from disk), scaled so the largest — the Conviva report's 40× — fills the track. Sources, respectively: Section 6.1 (Fig. 7/8), Section 6.1, Section 6.2 (Fig. 10), Section 6.5, and Section 6.6 (Fig. 14: 170s from disk vs. 5–7s from Spark's in-memory RDDs on 1 TB).</figcaption>
+    </figure>
+
+    <!-- CONCEPT MAP -->
+    <figure class="viz reveal">
+      <div class="viz-title">How the pieces connect</div>
+      <div class="viz-kicker">problem → mechanism → scheduling → payoff</div>
+      <div class="flow-row">
+        <div class="node n-old"><div class="nt">Problem</div><div class="nd">Reusing data between jobs means round-tripping through a distributed filesystem, every time (Section 1)</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node n-rule"><div class="nt">RDD abstraction</div><div class="nd">Built only via deterministic bulk transformations — lineage is the recipe, not a copy (Section 2.1)</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node n-vllm"><div class="nt">Spark scheduler</div><div class="nd">Lazy DAG of stages; pipelines narrow deps, shuffles at wide deps (Section 5.1, Fig. 5)</div></div>
+      </div>
+      <div style="text-align:center;margin:12px 0;color:var(--ink-faint);font-family:var(--mono);font-size:1.3rem">↓</div>
+      <div class="flow-row">
+        <div class="node n-live"><div class="nt">Reuse</div><div class="nd"><code>persist()</code> keeps an RDD in RAM across queries and iterations (Section 2.2)</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node n-old"><div class="nt">Failure</div><div class="nd">Recompute only the lost partitions from lineage, in parallel — no replication (Section 2.3)</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node n-vllm"><div class="nt">Result</div><div class="nd">20–40× speedups; MapReduce/Pregel/HaLoop reproduced as small libraries (Section 7.1)</div></div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ TAB 3: ANALOGIES ============ -->
+<section class="tab-panel" id="tab-analogies">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Six everyday pictures</div>
+      <h2>How to think about lineage and dependencies</h2>
+      <p class="sub">The paper itself is fairly spare with analogies — its main comparison is the RDD-vs-DSM table (Table 1). The pictures below are illustrative devices to build intuition, each grounded in a specific section, with an honest note on where the picture stops being true.</p>
+    </div>
+    <div class="analogy-grid">
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="14" y="18" width="112" height="18" rx="3" fill="#FBEACB" stroke="#C27D14" stroke-width="2"/>
+          <text x="70" y="30" text-anchor="middle" font-family="monospace" font-size="8" fill="#6e4a09">1. flour + water + yeast</text>
+          <path d="M70 36 v10" stroke="#9A8E7C" stroke-width="2"/>
+          <rect x="14" y="50" width="112" height="18" rx="3" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <text x="70" y="62" text-anchor="middle" font-family="monospace" font-size="8" fill="#1f5b51">2. knead + rise (RDD₁)</text>
+          <path d="M70 68 v10" stroke="#9A8E7C" stroke-width="2"/>
+          <rect x="14" y="80" width="112" height="14" rx="3" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+        </svg></div>
+        <span class="term">The core mapping · Lineage as a recipe</span>
+        <h3>A recipe, not a photograph of the cake</h3>
+        <p>A recipe is a small, exact set of deterministic steps; the cake itself is large and, once eaten, gone for good unless you bake another. An RDD's lineage is the recipe — "load this file, then filter, then map" — small enough to log cheaply (often under 10 KB, Section 6.3), even when the "cake" it describes is a 100 GB dataset.</p>
+        <div class="breaks"><b>Where it holds tightly:</b> exactly like a recipe, lineage only works because each step is <b>deterministic</b> — the same inputs always yield the same outputs (Section 2.1).</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="18" y="20" width="24" height="16" rx="2" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <rect x="58" y="20" width="24" height="16" rx="2" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <rect x="98" y="20" width="24" height="16" rx="2" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <path d="M30 36 v10 M70 36 v10 M110 36 v10" stroke="#2C8C7C" stroke-width="2"/>
+          <rect x="18" y="50" width="24" height="16" rx="2" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <rect x="58" y="50" width="24" height="16" rx="2" fill="#F7E1D8" stroke="#C0563B" stroke-width="2" stroke-dasharray="3 2"/>
+          <rect x="98" y="50" width="24" height="16" rx="2" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <text x="70" y="82" text-anchor="middle" font-family="monospace" font-size="8" fill="#9A8E7C">each output ← its own input only</text>
+        </svg></div>
+        <span class="term">Narrow dependency · Assembly line</span>
+        <h3>One station, one input, no coordination</h3>
+        <p>On an assembly line, each station only ever needs the part sitting directly in front of it — never a part from another station's lane. A <b>narrow dependency</b> (map, filter) is the same: each child partition depends on exactly one parent partition, so if a station's part is lost, replacing it needs no help from any other lane, and every lane can be repaired in parallel (Section 4, Fig. 4).</p>
+        <div class="breaks"><b>Where it holds tightly:</b> this is exactly why narrow-dependency recovery is "fine-grained and low-overhead" (Table 1) — no cross-machine coordination needed.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="18" y="16" width="24" height="16" rx="2" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <rect x="58" y="16" width="24" height="16" rx="2" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <rect x="98" y="16" width="24" height="16" rx="2" fill="#F7E1D8" stroke="#C0563B" stroke-width="2" stroke-dasharray="3 2"/>
+          <path d="M30 32 L60 60 M70 32 L60 60 M110 32 L60 60" stroke="#9A8E7C" stroke-width="1.6" stroke-dasharray="2 2"/>
+          <rect x="42" y="60" width="36" height="18" rx="2" fill="#E6E6F6" stroke="#5A61B4" stroke-width="2"/>
+          <text x="60" y="72" text-anchor="middle" font-family="monospace" font-size="8" fill="#3a409a">shuffle</text>
+        </svg></div>
+        <span class="term">Wide dependency · A potluck table</span>
+        <h3>Everyone's dish has to reach the shared table first</h3>
+        <p>A potluck needs every dish physically gathered onto one table before anyone can serve a plate — no way to plate food that's still scattered across everyone's kitchens. A <b>wide dependency</b> (groupByKey, non-co-partitioned join) needs data from <i>all</i> parent partitions gathered ("shuffled") before any child partition can be computed (Section 4, Fig. 4–5). If one dish never arrives, plating can't finish — and re-cooking it might mean re-cooking from a table that's now also missing pieces.</p>
+        <div class="breaks"><b>Where it's sharper than the analogy:</b> losing one parent partition under a wide dependency can force recomputing a slice from <i>every</i> ancestor, not just one dish (Section 5.4) — potlucks are rarely that fragile.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <circle cx="40" cy="48" r="14" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <circle cx="100" cy="48" r="14" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <text x="40" y="52" text-anchor="middle" font-family="monospace" font-size="8" fill="#1f5b51">A</text>
+          <text x="100" y="52" text-anchor="middle" font-family="monospace" font-size="8" fill="#1f5b51">B</text>
+          <path d="M56 44 h28" stroke="#9A8E7C" stroke-width="2"/>
+          <path d="M78 40 l6 4 l-6 4" fill="none" stroke="#9A8E7C" stroke-width="2"/>
+          <text x="70" y="30" text-anchor="middle" font-family="monospace" font-size="7" fill="#9A8E7C">racing, same finish line</text>
+        </svg></div>
+        <span class="term">Straggler mitigation · Running two racers</span>
+        <h3>It's safe to run the same leg twice</h3>
+        <p>If a race lets you send a second runner down the same lane the moment the first looks slow, and both runners finishing just means you take whichever crossed first — nothing breaks, because neither runner can interfere with the other. Spark does exactly this with slow tasks: launch a backup copy elsewhere and take whichever finishes first (Section 2.3), safe only because RDDs are immutable — two copies of a task can't corrupt shared state the way two writers to the same memory cell could.</p>
+        <div class="breaks"><b>Where it's sharper than the analogy:</b> the paper explicitly contrasts this with distributed shared memory, where backup tasks "would be hard to implement with DSM, as the two copies [of a task] would access the same memory locations and interfere with each other's updates" (Section 2.3).</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="20" y="20" width="40" height="56" rx="4" fill="#F7E1D8" stroke="#C0563B" stroke-width="2"/>
+          <text x="40" y="52" text-anchor="middle" font-family="monospace" font-size="8" fill="#9a3a22">insure</text>
+          <text x="40" y="63" text-anchor="middle" font-family="monospace" font-size="7" fill="#9a3a22">everything</text>
+          <rect x="80" y="20" width="40" height="24" rx="4" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <text x="100" y="35" text-anchor="middle" font-family="monospace" font-size="8" fill="#1f5b51">fix only</text>
+          <path d="M80 52 l40 24 M120 52 l-40 24" stroke="#9A8E7C" stroke-width="1.6" stroke-dasharray="2 2"/>
+          <text x="100" y="86" text-anchor="middle" font-family="monospace" font-size="7" fill="#9A8E7C">what breaks</text>
+        </svg></div>
+        <span class="term">Checkpointing vs. lineage · Insurance vs. repair</span>
+        <h3>Paying premiums forever vs. paying only when something breaks</h3>
+        <p>Full replication is like buying comprehensive insurance and paying the premium constantly, whether or not anything ever goes wrong. Lineage-based recovery is like skipping the policy and just paying to repair the one thing that actually breaks, when it breaks. For RDDs with only narrow dependencies (like <code>points</code> in logistic regression), "checkpointing may never be worthwhile" (Section 5.4) — repair is already cheap. For long wide-dependency chains (like PageRank's <code>ranks</code>), the premium starts looking worth it, which is exactly why Spark offers an optional checkpointing flag.</p>
+        <div class="breaks"><b>Where it's narrower:</b> Spark's checkpointing is a manual choice via a flag to <code>persist</code> (Section 5.4) — the paper describes automatic checkpoint selection as future work, not something Spark decided for you.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="24" y="24" width="92" height="48" rx="6" fill="none" stroke="#9A8E7C" stroke-width="2" stroke-dasharray="4 3"/>
+          <text x="70" y="16" text-anchor="middle" font-family="monospace" font-size="9" fill="#9a3a22">no fine-grained writes here</text>
+          <rect x="36" y="36" width="30" height="24" rx="3" fill="#F7E1D8" stroke="#C0563B" stroke-width="2"/>
+          <text x="51" y="51" text-anchor="middle" font-family="monospace" font-size="8" fill="#9a3a22">DB</text>
+          <rect x="76" y="36" width="30" height="24" rx="3" fill="#F7E1D8" stroke="#C0563B" stroke-width="2"/>
+          <text x="91" y="51" text-anchor="middle" font-family="monospace" font-size="8" fill="#9a3a22">web</text>
+        </svg></div>
+        <span class="term">Where it breaks · No single-cell edits</span>
+        <h3>A recipe can't describe "change just this one bite"</h3>
+        <p>A recipe (lineage) describes how to bake a whole batch, not how to swap out one raisin after the fact. RDDs are only ever written via bulk, deterministic transformations over an entire dataset — there's no operation for "update this one record." The paper is explicit that this makes RDDs a poor fit for a web application's backing store or an incremental crawler updating individual records (Section 2.4).</p>
+        <div class="breaks"><b>Consequence:</b> for exactly that class of application, the paper points to fine-grained systems like databases, RAMCloud, Percolator, and Piccolo instead (Section 2.4) — RDDs and those systems are meant to coexist, not compete.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 4: HOW IT WORKS ============ -->
+<section class="tab-panel" id="tab-how">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">The full explanation</div>
+      <h2>How it actually works</h2>
+      <p class="sub">Section by section, with an interactive failure simulator you can drive yourself.</p>
+    </div>
+
+    <div class="prose">
+      <h3>1 · The problem — reuse means a round trip through stable storage</h3>
+      <p>MapReduce and Dryad give programmers rich parallel operators and hide fault tolerance behind re-execution, but the only sanctioned way to share data between two jobs is to write it to a distributed filesystem and read it back (Section 1). That is fine for one-shot batch pipelines, but ruinous for two workloads the paper singles out: <b>iterative algorithms</b> (PageRank, k-means, logistic regression — the same data touched 10s to 100s of times) and <b>interactive data mining</b> (many ad-hoc queries against the same working set). Systems that instead expose fine-grained mutable shared memory — distributed shared memory, key-value stores, Piccolo — solve reuse, but only by accepting expensive fault-tolerance machinery: replicate every write across the network, or log updates and roll back a checkpoint (Section 1, Table 1).</p>
+      <div class="callout warn"><span class="ic">⚠</span><div><b>Why not just cache the data flow system's output in RAM naively?</b> Section 2.3 spells out the actual comparison: distributed shared memory's fine-grained writes mean the <i>only</i> ways to survive a failure are checkpoint-and-rollback (expensive, and requires pausing the whole program to snapshot) or full replication (expensive, network-bound). RDDs sidestep both by restricting how data can be created in the first place.</div></div>
+    </div>
+
+    <div class="prose">
+      <h3>2 · The RDD abstraction and lineage</h3>
+      <p>An RDD is a <b>read-only, partitioned collection of records</b>, created only by (1) loading data from stable storage, or (2) applying a deterministic <b>transformation</b> — map, filter, join, and friends — to one or more existing RDDs (Section 2.1). Because those are the <i>only</i> two ways an RDD can come into existence, every RDD can name its own recipe: the transformation and the parent(s) it was built from. That recipe is its <b>lineage</b>. Users additionally control two independent knobs per RDD: <b>persistence</b> (<code>persist()</code> — keep it in memory, on disk, or replicated, rather than recomputing it every time it's touched) and <b>partitioning</b> (hash- or range-partition key-value RDDs, which matters enormously for <code>join</code>, Section 2.1).</p>
+      <p>Figure 1's log-mining pipeline makes lineage concrete: <code>lines</code> (an HDFS file) → <code>errors</code> (filter) → <code>HDFS errors</code> (filter) → <code>time fields</code> (map). Lose a partition of <code>HDFS errors</code>, and Spark doesn't reach for a replica — it re-applies the two filters to the matching partition of <code>lines</code>.</p>
+    </div>
+
+    <div class="prose">
+      <h3>3 · Narrow vs. wide dependencies — the fact that decides recovery cost</h3>
+      <p>Section 4 classifies every dependency between an RDD and its parent into one of two kinds. A <b>narrow dependency</b> means each parent partition feeds <i>at most one</i> child partition (map, filter, a co-partitioned join). A <b>wide dependency</b> means a parent partition can feed <i>multiple</i> child partitions (groupByKey, a join whose inputs aren't co-partitioned) — see Figure 4. This single distinction drives two separate things at once: whether Spark can <b>pipeline</b> operations in one pass on one machine (narrow) or must insert a network <b>shuffle</b> (wide) — the basis for the staged DAG execution in Figure 5 — and how expensive <b>failure recovery</b> is. Narrow-dependency recovery recomputes only the lost partition, in parallel with everything else. Wide-dependency recovery can require recomputing a slice from <i>every</i> ancestor partition, because a single lost partition may have contributed to many children (Section 4, Section 5.4).</p>
+    </div>
+
+    <!-- INTERACTIVE: lineage / failure explorer -->
+    <figure class="viz reveal">
+      <div class="viz-title">Try it: how much do you have to recompute after a failure?</div>
+      <div class="viz-kicker">move the iteration slider, choose a checkpoint interval, then kill a node</div>
+      <div class="blk-viz">
+        <div class="blk-scheme">
+          <h4><span class="tagpill" style="background:var(--accent-2-soft);color:#1f5b51">NARROW CHAIN</span>e.g. logistic regression's <code>points</code>, or PageRank's <code>links</code> — map/filter only, every iteration reads straight from stable storage</h4>
+          <div class="blk-grid" id="narrowGrid"></div>
+        </div>
+        <div class="blk-scheme">
+          <h4><span class="tagpill" style="background:var(--accent-4-soft);color:#9a3a22">WIDE CHAIN</span>e.g. PageRank's <code>ranks</code> — a join + reduceByKey against the previous iteration, every iteration</h4>
+          <div class="blk-grid" id="wideGrid"></div>
+        </div>
+        <div>
+          <div class="blk-controls">
+            <span style="font-family:var(--mono);font-size:.85rem;color:var(--ink-soft)">iterations completed:</span>
+            <input type="range" min="1" max="10" value="6" id="iterRange">
+            <span class="mono" id="iterRangeVal" style="font-family:var(--mono);font-weight:700;color:var(--accent-3);min-width:3ch;display:inline-block">6</span>
+          </div>
+          <div class="preset-row" id="ckptPresets">
+            <span style="font-family:var(--mono);font-size:.85rem;color:var(--ink-soft)">checkpoint the wide chain every:</span>
+            <button class="tbtn on" data-ckpt="0">never</button>
+            <button class="tbtn" data-ckpt="3">3 iters</button>
+            <button class="tbtn" data-ckpt="5">5 iters</button>
+          </div>
+          <button class="tbtn" id="failBtn" style="margin-top:14px;background:var(--accent-4);border-color:var(--accent-4);color:#fff">⚡ Kill a node after the last iteration</button>
+          <div class="blk-readout">
+            <div class="pstat">narrow chain recomputes<b id="narrowCost">—</b></div>
+            <div class="pstat">wide chain recomputes<b id="wideCost">—</b></div>
+          </div>
+          <div class="pverdict sub" id="lineageVerdict">Move the slider, then kill a node…</div>
+        </div>
+      </div>
+      <figcaption><b>What you're seeing:</b> each square is one iteration's partition. Gold outlines mark checkpoints. This is an illustrative simulation of the mechanism described in Sections 4 and 5.4 — the specific "iterations recomputed" counts follow directly from the paper's stated logic, but this widget isn't reproducing a measured timing. For the paper's own <i>measured</i> recovery numbers, see the k-means fault-recovery trace in the Worked Example and Key Results tabs (Fig. 11: 58s → 80s → 58s, entirely a narrow-dependency recovery).</figcaption>
+    </figure>
+
+    <div class="prose">
+      <h3>4 · Recomputation vs. checkpointing</h3>
+      <p>Since RDDs are immutable, checkpointing them is simpler than checkpointing general shared memory: Spark can write an RDD to stable storage in the background, with no program pause and no distributed-snapshot protocol (Section 5.4). Spark exposes this as a <code>REPLICATE</code> flag to <code>persist</code>, but leaves the choice of <i>what</i> to checkpoint to the user — automatic selection is future work. The paper's own guidance (Section 5.4): checkpoint RDDs with long, wide-dependency lineage chains (PageRank's <code>ranks</code>); for RDDs with narrow dependencies back to stable storage (logistic regression's <code>points</code>, PageRank's <code>links</code>), "checkpointing may never be worthwhile," because lineage recovery is already cheap and parallel. (Separately, Section 3.2.2 mentions a <code>RELIABLE</code> flag for replicating specific iterations' data to cut recovery time in long-running jobs — the paper doesn't fully reconcile the naming of these two mechanisms, but the underlying idea in both cases is: pay a storage cost now to avoid a larger recomputation cost later.)</p>
+    </div>
+
+    <div class="prose">
+      <h3>5 · Scheduling, memory management, and stragglers</h3>
+      <p>When an action runs, Spark's scheduler walks the target RDD's lineage backward and builds a DAG of <b>stages</b> (Section 5.1, Fig. 5): each stage packs together as many pipelined narrow-dependency transformations as possible, and stage boundaries fall exactly at wide dependencies (which need a shuffle) or at already-cached partitions (which let the scheduler skip recomputing an ancestor entirely). Tasks are placed using data locality, same as HDFS-aware schedulers. Persistent RDDs are kept under an <b>LRU eviction policy</b> at the granularity of whole RDDs — evicting the least-recently-used RDD's partitions, with one exception: Spark won't evict a partition to make room for another partition of the <i>same</i> RDD, since most operations scan an entire RDD and that partition will likely be needed again soon (Section 5.3). Because RDDs are immutable, Spark can also safely re-run a slow task as a speculative <b>backup</b>, exactly as MapReduce does for stragglers (Section 2.3) — something the paper argues is difficult in distributed shared memory, where two copies of a task would race on the same mutable state.</p>
+    </div>
+
+    <div class="prose">
+      <h3>6 · One abstraction, many programming models</h3>
+      <p>Section 7.1 argues RDDs can express, "efficiently" (meaning: not just the same output, but the same optimizations), several models previously built as separate systems: <b>MapReduce</b> (flatMap + groupByKey, or reduceByKey with a combiner), <b>DryadLINQ</b> (its bulk operators map directly onto RDD transformations), <b>SQL</b> (data-parallel operations over sets of records), <b>Pregel</b> (store each superstep's vertex states in an RDD; a bulk flatMap generates the messages for the next step — implemented as a ~200-line library), and <b>iterative MapReduce</b> systems like HaLoop and Twister (also reimplemented as a ~200-line library on Spark). The paper's explanation for why one restricted abstraction generalizes this far: bulk transformations aren't actually a limitation for most parallel programs, because most parallel programs already apply the same operation to every record; and immutability isn't an obstacle either, because you can always represent "the next version" as a new RDD (Section 7.1) — indeed, many MapReduce jobs already run against filesystems, like HDFS, that don't support in-place updates at all.</p>
+    </div>
+
+    <div class="prose">
+      <h3>Where the abstraction breaks</h3>
+      <p>The paper is candid about scope (Sections 2.4, 5.1, 5.3, 7.2):</p>
+      <div class="callout warn"><span class="ic">⚠</span><div><b>No fine-grained writes.</b> RDDs are unsuitable for applications needing asynchronous, fine-grained updates to shared state — a web application's backing store, or an incremental crawler updating individual records. The paper names databases, RAMCloud, Percolator, and Piccolo as the right tools for that job instead (Section 2.4).</div></div>
+      <div class="callout warn"><span class="ic">⚠</span><div><b>Lineage-based recovery assumes determinism.</b> A nondeterministic transformation (e.g., a map with side effects) won't be replayed correctly — at best the system can detect and report the nondeterminism via checksums, not correct for it (Section 7.2, footnote 9).</div></div>
+      <div class="callout warn"><span class="ic">⚠</span><div><b>Gaps acknowledged as of publication.</b> Scheduler failures aren't yet tolerated ("we do not yet tolerate scheduler failures," Section 5.1), and each Spark instance keeps its own separate memory space, with cross-instance sharing left as future work (Section 5.3).</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 5: WORKED EXAMPLE ============ -->
+<section class="tab-panel" id="tab-example">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Follow the pipeline, step by step</div>
+      <h2>One log-mining query, from code to recovery</h2>
+      <p class="sub">Built from the paper's own log-mining example (Section 2.2.1, Fig. 1), then extended with the paper's actual measured fault-recovery numbers (Section 6.3, Fig. 11) and its PageRank partitioning result (Section 3.2.2, Section 6.2).</p>
+    </div>
+
+    <div class="card reveal">
+      <h3>① Define the pipeline — and do zero work</h3>
+      <pre class="sketch"><span class="cm">// nothing runs yet — these are lazy transformations</span>
+<span class="kw">val</span> lines  = spark.textFile(<span class="hl">"hdfs://..."</span>)
+<span class="kw">val</span> errors = lines.filter(_.startsWith(<span class="hl">"ERROR"</span>))
+errors.persist()   <span class="cm">// ask Spark to cache this RDD in RAM once computed</span></pre>
+      <ol class="seq">
+        <li><code>lines</code> is an RDD over an HDFS file; <code>errors</code> is a narrow-dependency filter of it. Because <code>filter</code> is a transformation, not an action, <b>no cluster work has happened yet</b> (Section 2.2.1).</li>
+      </ol>
+    </div>
+
+    <div class="card reveal">
+      <h3>② Trigger an action — now the DAG runs, pipelined</h3>
+      <pre class="sketch">errors.count()   <span class="cm">// action: forces computation</span>
+errors.filter(_.contains(<span class="hl">"MySQL"</span>)).count()                                <span class="cm">// query A</span>
+errors.filter(_.contains(<span class="hl">"HDFS"</span>)).map(_.split(<span class="hl">'\t'</span>)(<span class="hl">3</span>)).collect()   <span class="cm">// query B</span></pre>
+      <ol class="seq">
+        <li><code>count()</code> builds the DAG for <code>errors</code>, sees a single narrow-dependency hop from <code>lines</code>, and pipelines the read-plus-filter into one pass per HDFS block — no shuffle needed.</li>
+        <li>Query A and query B both build on the <i>already-cached</i> <code>errors</code>, instead of re-scanning and re-filtering the raw logs — this is the whole data-reuse gap the paper set out to close.</li>
+      </ol>
+    </div>
+
+    <div class="card reveal">
+      <h3>③ A node fails mid-query — recompute one partition, not the dataset</h3>
+      <ol class="seq">
+        <li>Suppose a machine holding a partition of <code>errors</code> dies during query B. There's no replica to fall back on — Spark reads <code>errors</code>'s lineage ("partition <i>i</i> = filter(partition <i>i</i> of <code>lines</code>, startsWith)") and re-applies that filter to the matching block of <code>lines</code>, which HDFS still holds safely. Only that one partition is rebuilt, in parallel with the rest of the query proceeding normally.</li>
+        <li>This is exactly the mechanism the paper measures directly with k-means (Section 6.3, Fig. 11): across 10 iterations on 75 nodes, each iteration held steady at <b>~58 seconds</b> — until a node was killed at the start of iteration 6, which rose to <b>80 seconds</b> while the lost partitions were rebuilt from lineage, then <b>dropped straight back to 58 seconds</b> the very next iteration. No checkpoint replay, no rollback of the whole job.</li>
+        <li>For scale: the paper notes the lineage graphs in these examples were typically <b>under 10 KB</b>, even though the dataset itself was 100 GB (Section 6.3) — the recipe really is that much smaller than the cake.</li>
+      </ol>
+    </div>
+
+    <div class="card reveal">
+      <h3>④ Add partitioning — PageRank's join gets cheaper, not just its recovery</h3>
+      <pre class="sketch"><span class="kw">val</span> links = spark.textFile(...).map(...)
+             .partitionBy(myPartFunc).persist()   <span class="cm">// hash-partition by URL</span></pre>
+      <ol class="seq">
+        <li>If <code>links</code> and <code>ranks</code> are both hash-partitioned by URL, each iteration's <code>join</code> between them becomes a <b>narrow</b> dependency — a URL's link list and its rank already live on the same machine, so no shuffle is needed at all (Section 3.2.2).</li>
+        <li>Measured effect (Section 6.2, Fig. 10): in-memory storage alone gave PageRank a <b>2.4×</b> speedup over Hadoop on 30 nodes; adding consistent partitioning pushed that to <b>7.4×</b>.</li>
+        <li>Without matching partitioning, that same <code>join</code> is a wide dependency requiring a full network shuffle every single iteration — the difference between "assembly line" and "potluck," from the Analogies tab, made concrete.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 6: KEY RESULTS ============ -->
+<section class="tab-panel" id="tab-results">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">What the evaluation shows</div>
+      <h2>Key results</h2>
+      <p class="sub">Testbed: Amazon EC2 <code>m1.xlarge</code> nodes (4 cores, 15 GB RAM) unless noted, HDFS with 256 MB blocks, OS buffer caches cleared before each test (Section 6). Baselines: Hadoop 0.20.2, and a custom <code>HadoopBinMem</code> variant the authors built themselves (converts data to binary, caches it in an in-memory HDFS instance) — the paper doesn't cite an existing in-memory Hadoop system it could have used instead.</p>
+    </div>
+
+    <table class="tbl">
+      <thead><tr><th>Finding</th><th>Numbers</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr class="best"><td><b>Iterative ML speedup</b></td><td>Logistic regression: 25.3× vs. Hadoop, 20.7× vs. HadoopBinMem (100 GB, 100 machines, subsequent iterations)</td><td class="mono">§6.1, Figs. 7–8</td></tr>
+        <tr><td>K-means speedup</td><td>1.9×–3.2× vs. Hadoop/HadoopBinMem — smaller because k-means is more compute- than I/O-bound</td><td class="mono">§6.1</td></tr>
+        <tr><td>Why the 20× gap even vs. in-memory Hadoop</td><td>~25s min. job overhead + ~2s HDFS serving overhead + ~3s deserialization into Java objects, all avoided by Spark's live in-memory objects</td><td class="mono">§6.1, Fig. 9</td></tr>
+        <tr class="best"><td><b>PageRank</b></td><td>2.4× speedup from in-memory storage alone; 7.4× with consistent hash partitioning (30 nodes, 54 GB Wikipedia dump)</td><td class="mono">§6.2, Fig. 10</td></tr>
+        <tr><td>Fault recovery (k-means)</td><td>Steady ~58s/iteration; node killed at iteration 6 of 10 → 80s that iteration → back to 58s immediately after (75 nodes, 100 GB)</td><td class="mono">§6.3, Fig. 11</td></tr>
+        <tr><td>Lineage vs. replicated data size</td><td>Lineage graphs typically &lt;10 KB, for datasets spanning 100 GB</td><td class="mono">§6.3</td></tr>
+        <tr><td>Graceful degradation</td><td>Performance degrades smoothly as less of the working set fits in memory (logistic regression, 100 GB, 25 machines)</td><td class="mono">§6.4, Fig. 12</td></tr>
+        <tr class="best"><td><b>Production report (Conviva)</b></td><td>40× speedup: 20 hours on Hadoop → 30 minutes on 2 Spark machines, using only 96 GB RAM (200 GB compressed data)</td><td class="mono">§6.5</td></tr>
+        <tr><td>Interactive 1 TB query</td><td>5–7s response time on 100 machines, vs. 170s reading the same 1 TB from disk</td><td class="mono">§6.6, Fig. 14</td></tr>
+        <tr><td>Implementation size</td><td>Spark: ~14,000 lines of Scala; Pregel and HaLoop reimplemented as ~200-line libraries each on top of it</td><td class="mono">§5, §1, §7.1</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout note"><span class="ic">⚖️</span><div><b>Caveats worth keeping in mind:</b> <code>HadoopBinMem</code> is the authors' own custom variant (converts data to binary, caches it in an in-memory HDFS instance) rather than an existing third-party system — the paper doesn't say why, but it appears to be there because no ready-made in-memory Hadoop baseline was available (§6.1). At publication, Spark did not yet tolerate scheduler failures and kept a separate memory space per instance (§5.1, §5.3) — the headline numbers describe the 2011–2012 research prototype, not later production Spark (Spark SQL, DataFrames, and Structured Streaming all postdate this paper).</div></div>
+  </div>
+</section>
+
+<!-- ============ TAB 7: PRACTICE ============ -->
+<section class="tab-panel" id="tab-practice">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Check your understanding</div>
+      <h2>Practice</h2>
+      <p class="sub">Try each before opening the answer.</p>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q1</span>
+      <div class="qtext">Why can RDDs recover from a lost partition without replicating data, when a distributed shared memory (DSM) system generally can't?</div>
+      <details><summary>Show answer</summary><div class="ans">Because RDDs are only ever built via deterministic bulk transformations from stable storage or other RDDs, the system can log the recipe (lineage) instead of the data itself, and rebuild exactly the lost partition by replaying that recipe on the parent's data. DSM allows arbitrary fine-grained writes to shared state, so there's no compact recipe to replay — the only options left are checkpoint-and-rollback or full replication (Table 1, Section 2.3).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q2</span>
+      <div class="qtext">A <code>join</code> between two RDDs can be either a narrow or a wide dependency. What determines which?</div>
+      <details><summary>Show answer</summary><div class="ans">Whether the two parent RDDs are already partitioned the same way (e.g., both hash-partitioned by the join key). If so, each partition of one parent only needs the corresponding partition of the other — narrow. If not, matching keys can live on arbitrary machines across both parents, requiring a shuffle to bring them together — wide (Section 4, Fig. 4).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q3</span>
+      <div class="qtext">In the PageRank example, why doesn't the <code>links</code> RDD need replication for fault tolerance, while <code>ranks</code> might benefit from checkpointing?</div>
+      <details><summary>Show answer</summary><div class="ans"><code>links</code> is derived from stable storage via a narrow-dependency map, so a lost partition can be cheaply recomputed in parallel by re-reading and re-mapping the corresponding input block. <code>ranks</code> is rebuilt every iteration via a join/reduceByKey over the previous iteration's <code>ranks</code> and <code>contribs</code> — a chain of wide dependencies that grows with each iteration, so recovering a late iteration's <code>ranks</code> could mean recomputing a long, wide-dependency chain. Checkpointing breaks that chain (Section 3.2.2, Section 5.4).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q4</span>
+      <div class="qtext">Why are Spark transformations lazy instead of executing immediately when called?</div>
+      <details><summary>Show answer</summary><div class="ans">Laziness lets Spark build the full lineage/DAG before doing any work, so when an action finally triggers computation, the scheduler can pipeline narrow-dependency steps into a single pass per partition and skip recomputing anything already cached — instead of eagerly materializing every intermediate RDD (Section 2.2, Section 5.1).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q5</span>
+      <div class="qtext">Spark beat even <code>HadoopBinMem</code> — Hadoop with data already converted to binary and cached in an in-memory HDFS — by roughly 20× on logistic regression. If the data was already in memory for both systems, where does that gap come from?</div>
+      <details><summary>Show answer</summary><div class="ans">Not from disk I/O — from three other overheads Hadoop still pays even with in-memory binary data: minimum per-job startup/coordination overhead (~25s measured via no-op jobs), overhead inside HDFS's own serving path (memory copies plus a checksum, ~2s), and the cost of deserializing binary records into usable Java objects (~3s). Spark avoids all three by keeping RDD elements as live, already-deserialized Java objects in its own memory (Section 6.1, Fig. 9).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q6</span>
+      <div class="qtext">What kind of application does the paper explicitly say RDDs are a <i>bad</i> fit for, and why?</div>
+      <details><summary>Show answer</summary><div class="ans">Applications needing fine-grained, asynchronous updates to shared state — e.g., the backing store for a web application, or an incremental web crawler updating individual records as new data arrives. RDDs can only be "written" via coarse-grained, deterministic transformations applied to whole datasets, so there's no efficient way to express a single targeted update to one record (Section 2.4).</div></details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 8: REFERENCE ============ -->
+<section class="tab-panel" id="tab-reference">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Look it up</div>
+      <h2>Glossary, limitations &amp; further reading</h2>
+    </div>
+
+    <div class="subhead">Core terms</div>
+    <div class="gloss">
+      <div class="term-def"><b>RDD</b><span>Resilient Distributed Dataset — an immutable, partitioned collection built only via deterministic transformations from stable storage or other RDDs (Section 2.1).</span></div>
+      <div class="term-def"><b>Transformation</b><span>A lazy operation defining a new RDD from existing ones (map, filter, join, …) — no computation happens until an action needs the result.</span></div>
+      <div class="term-def"><b>Action</b><span>An operation that triggers computation and returns a value to the driver or writes to storage (count, collect, reduce, save).</span></div>
+      <div class="term-def"><b>Lineage</b><span>The recorded chain of transformations that produced an RDD — the "recipe" used to recompute lost partitions instead of replicating data.</span></div>
+      <div class="term-def"><b>Partition</b><span>An atomic chunk of an RDD's data — the unit of parallel computation and of failure recovery.</span></div>
+      <div class="term-def"><b>Narrow dependency</b><span>Each parent partition feeds at most one child partition (map); enables pipelining and cheap, parallel recovery.</span></div>
+      <div class="term-def"><b>Wide dependency</b><span>A parent partition may feed multiple child partitions (groupByKey, non-co-partitioned join); needs a shuffle and can force expensive recovery.</span></div>
+      <div class="term-def"><b>Persist</b><span>The API call marking an RDD for retention (memory, disk, or replicated) across operations, instead of recomputing it from lineage every use.</span></div>
+    </div>
+
+    <div class="subhead">Supporting terms</div>
+    <div class="gloss">
+      <div class="term-def"><b>Driver</b><span>The user's program — defines RDDs, tracks lineage, and dispatches actions to workers (Section 3).</span></div>
+      <div class="term-def"><b>Stage</b><span>A batch of pipelined, narrow-dependency tasks in the DAG scheduler; boundaries occur at wide dependencies (shuffles) or already-cached partitions (Section 5.1, Fig. 5).</span></div>
+      <div class="term-def"><b>Straggler</b><span>An unusually slow task/machine; mitigated, as in MapReduce, by speculatively running a backup copy — safe because RDDs are immutable (Section 2.3).</span></div>
+      <div class="term-def"><b>Shuffle</b><span>The network data movement required at a wide dependency, analogous to MapReduce's shuffle between map and reduce.</span></div>
+      <div class="term-def"><b>LRU eviction (at the RDD level)</b><span>Spark's default memory-management policy for persisted RDDs; won't evict a partition to make room for another partition of the same RDD (Section 5.3).</span></div>
+      <div class="term-def"><b>Checkpointing</b><span>Optionally writing an RDD to stable storage (a REPLICATE flag to persist) to shorten recovery for long, wide-dependency lineage chains (Section 5.4).</span></div>
+      <div class="term-def"><b>Closure</b><span>A function literal (e.g., inside map/filter) that captures variables from its scope; Spark serializes closures to ship user code to workers (Section 3).</span></div>
+      <div class="term-def"><b>Sequence group (Pregel-on-Spark)</b><span>Not an RDD term — a reminder that "superstep" vocabulary from Pregel maps onto per-iteration RDDs when Pregel is implemented as a library over Spark (Section 7.1).</span></div>
+    </div>
+
+    <div class="subhead">Limitations &amp; open questions</div>
+    <div class="callout note"><span class="ic">📌</span><div><b>Stated by the authors:</b> RDDs target batch applications that apply the same operation to a whole dataset; fine-grained asynchronous updates are explicitly out of scope (Section 2.4). Checkpoint selection is manual, not automatic, as of this paper (Section 5.4). Scheduler failures aren't yet tolerated, and cross-instance memory sharing is future work (Section 5.1, 5.3). Lineage-based recovery and the proposed RDD debugger both assume deterministic transformations (Section 7.2, footnote 9).</div></div>
+    <div class="callout note"><span class="ic">🔍</span><div><b>Worth flagging (observations, not the paper's own claims):</b> the paper doesn't give a systematic decision rule for exactly when checkpointing pays off versus lineage recomputation beyond the PageRank/logistic-regression contrast — Young's checkpoint-interval result [30] is cited but not applied concretely. The headline speedups are measured against Hadoop 0.20.2 and a self-built HadoopBinMem baseline, not against later data-parallel systems, including Spark's own later evolution. The paper doesn't discuss what happens if lineage chains themselves become the bottleneck to track (beyond noting they stay small in its examples).</div></div>
+
+    <div class="subhead">Related papers</div>
+    <div class="read-item reveal"><h4>MapReduce: Simplified Data Processing on Large Clusters <span class="diff easy">easy</span></h4><div class="meta">Dean &amp; Ghemawat · OSDI · 2004</div><p>The baseline model RDDs generalize beyond — start here if MapReduce itself is unfamiliar.</p></div>
+    <div class="read-item reveal"><h4>Dryad: Distributed Data-Parallel Programs from Sequential Building Blocks <span class="diff med">medium</span></h4><div class="meta">Isard, Budiu, Yu, Birrell, Fetterly · EuroSys · 2007</div><p>The DAG execution model this paper's scheduler is explicitly modeled after (Section 5.1).</p></div>
+    <div class="read-item reveal"><h4>DryadLINQ: A System for General-Purpose Distributed Data-Parallel Computing Using a High-Level Language <span class="diff med">medium</span></h4><div class="meta">Yu, Isard, Fetterly, Budiu, Erlingsson, Gunda, Currey · OSDI · 2008</div><p>The language-integrated "parallel collections" API Spark's own interface is based on (Section 8).</p></div>
+    <div class="read-item reveal"><h4>Pregel: A System for Large-Scale Graph Processing <span class="diff med">medium</span></h4><div class="meta">Malewicz, Austern, Bik, Dehnert, Horn, Leiser, Czajkowski · SIGMOD · 2010</div><p>The iterative graph model the paper shows RDDs can express as a ~200-line library (Section 7.1).</p></div>
+    <div class="read-item reveal"><h4>Piccolo: Building Fast, Distributed Programs with Partitioned Tables <span class="diff hard">hard</span></h4><div class="meta">Power &amp; Li · OSDI · 2010</div><p>The fine-grained mutable-state alternative RDDs are directly contrasted against in Table 1.</p></div>
+    <div class="read-item reveal"><h4>Mesos: A Platform for Fine-Grained Resource Sharing in the Data Center <span class="diff med">medium</span></h4><div class="meta">Hindman, Konwinski, Zaharia, Ghodsi, Joseph, Katz, Shenker, Stoica · NSDI · 2011</div><p>The cluster manager Spark runs on top of (Section 5).</p></div>
+    <div class="read-item reveal"><h4>The Apache Spark project <span class="diff easy">easy</span></h4><div class="meta">spark-project.org (as cited in the paper's conclusion)</div><p>The paper's open-sourced artifact — note that Spark SQL, DataFrames, and Structured Streaming all postdate this paper and aren't covered by it.</p></div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span><b>Paper:</b> Zaharia, Chowdhury, Das, Dave, Ma, McCauley, Franklin, Shenker, Stoica — "Resilient Distributed Datasets: A Fault-Tolerant Abstraction for In-Memory Cluster Computing" (NSDI 2012)</span>
+    <span><b>Source:</b> <a href="https://www.usenix.org/system/files/conference/nsdi12/nsdi12-final138.pdf">usenix.org/system/files/conference/nsdi12/nsdi12-final138.pdf</a></span>
+    <span><b>Format:</b> Interactive field guide · numbers verified against the source</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- TABS ---- */
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+  var panels = {};
+  document.querySelectorAll('.tab-panel').forEach(function(p){ panels[p.id.replace('tab-','')] = p; });
+  function activate(name){
+    btns.forEach(function(b){ b.classList.toggle('active', b.dataset.tab === name); });
+    Object.keys(panels).forEach(function(k){ panels[k].classList.toggle('active', k === name); });
+    requestAnimationFrame(function(){ runReveals(); maybeAnimateBars(); });
+    window.scrollTo({top:0, behavior: reduce ? 'auto' : 'smooth'});
+    if(history.replaceState) history.replaceState(null,'','#'+name);
+  }
+  btns.forEach(function(b){ b.addEventListener('click', function(){ activate(b.dataset.tab); }); });
+  var initial = (location.hash||'').replace('#','');
+  if(initial && panels[initial]) activate(initial);
+
+  /* ---- SCROLL REVEAL ---- */
+  var io = ('IntersectionObserver' in window) ? new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, {threshold:0.12, rootMargin:'0px 0px -40px 0px'}) : null;
+  function runReveals(){
+    document.querySelectorAll('.tab-panel.active .reveal:not(.in)').forEach(function(el){
+      if(reduce || !io){ el.classList.add('in'); }
+      else { var r = el.getBoundingClientRect(); if(r.top < window.innerHeight) el.classList.add('in'); else io.observe(el); }
+    });
+  }
+
+  /* ---- HEADLINE BARS ---- */
+  var barsDone = false, MAXP = 100;
+  function maybeAnimateBars(){
+    var fig = document.getElementById('headlineBars');
+    if(!fig || barsDone || !fig.closest('.tab-panel').classList.contains('active')) return;
+    document.querySelectorAll('#headlineBars .bar-fill').forEach(function(f,i){
+      var w = Math.min(100,(parseFloat(f.dataset.w)/MAXP)*100);
+      setTimeout(function(){ f.style.width = w + '%'; }, reduce ? 0 : 110*i);
+    });
+    fig.classList.add('shown');
+    barsDone = true;
+  }
+
+  /* ---- LINEAGE / FAILURE EXPLORER ---- */
+  var narrowGrid = document.getElementById('narrowGrid'), wideGrid = document.getElementById('wideGrid');
+  var iters = 6, ckptEvery = 0, failed = false;
+
+  function boxesFor(grid, n, cols){
+    grid.style.gridTemplateColumns = 'repeat('+cols+', 1fr)';
+    var html = '';
+    for(var i=0;i<n;i++) html += '<div class="blk pending" data-i="'+i+'"></div>';
+    grid.innerHTML = html;
+  }
+
+  function lastCheckpointBefore(n, every){
+    if(!every) return 0;
+    var last = Math.floor((n-1)/every)*every; // 0-indexed boundary
+    return last;
+  }
+
+  function render(){
+    document.getElementById('iterRangeVal').textContent = iters;
+    var cols = Math.min(10, iters);
+    boxesFor(narrowGrid, iters, cols);
+    boxesFor(wideGrid, iters, cols);
+
+    var narrowBoxes = narrowGrid.querySelectorAll('.blk');
+    var wideBoxes = wideGrid.querySelectorAll('.blk');
+
+    // mark checkpoint boundaries on the wide chain
+    var ckptStart = ckptEvery ? lastCheckpointBefore(iters, ckptEvery) : -1;
+    wideBoxes.forEach(function(b, i){
+      b.className = 'blk used';
+      if(ckptEvery && i>0 && i % ckptEvery === 0) b.classList.add('ckpt');
+    });
+    narrowBoxes.forEach(function(b){ b.className = 'blk used'; });
+
+    var narrowCost = 0, wideCost = 0;
+
+    if(failed){
+      // narrow chain: only the last iteration's partition needs recompute, straight from stable storage
+      narrowBoxes[iters-1].className = 'blk lost';
+      narrowCost = 1;
+
+      // wide chain: everything back to the most recent checkpoint boundary (inclusive of the boundary itself staying safe)
+      var from = ckptEvery ? ckptStart : 0;
+      for(var i = from; i < iters; i++){
+        if(i === from && ckptEvery && from > 0){ continue; } // the checkpointed partition itself is safe
+        wideBoxes[i].classList.remove('used');
+        wideBoxes[i].classList.add('lost');
+      }
+      wideCost = ckptEvery ? (iters - from - (from>0?1:0)) : iters;
+      if(wideCost < 1) wideCost = 1;
+    }
+
+    document.getElementById('narrowCost').textContent = failed ? (narrowCost + ' partition') : '—';
+    document.getElementById('wideCost').textContent = failed ? (wideCost + ' iteration'+(wideCost===1?'':'s')) : '—';
+
+    var verd = document.getElementById('lineageVerdict');
+    if(!failed){
+      verd.className = 'pverdict sub';
+      verd.textContent = 'Move the slider, then kill a node…';
+    } else if(!ckptEvery){
+      verd.className = 'pverdict bad';
+      verd.textContent = '⚠ No checkpoint: the wide chain must recompute all '+wideCost+' iteration'+(wideCost===1?'':'s')+' back to the start — a full re-run — while the narrow chain rebuilds just 1 partition, in parallel, from stable storage (Section 4, Section 5.4).';
+    } else {
+      verd.className = 'pverdict opt';
+      verd.textContent = '✓ With a checkpoint every '+ckptEvery+', the wide chain only replays '+wideCost+' iteration'+(wideCost===1?'':'s')+' since the last checkpoint — versus the narrow chain\'s 1 partition either way. Checkpointing exists precisely to bound this cost (Section 5.4).';
+    }
+  }
+
+  var iterRange = document.getElementById('iterRange');
+  if(iterRange){
+    iterRange.addEventListener('input', function(){ iters = parseInt(this.value,10); failed = false; render(); });
+    document.querySelectorAll('#ckptPresets [data-ckpt]').forEach(function(b){
+      b.addEventListener('click', function(){
+        ckptEvery = parseInt(b.dataset.ckpt,10);
+        document.querySelectorAll('#ckptPresets .tbtn').forEach(function(x){ x.classList.toggle('on', x===b); });
+        render();
+      });
+    });
+    document.getElementById('failBtn').addEventListener('click', function(){ failed = true; render(); });
+    render();
+  }
+
+  /* ---- INIT ---- */
+  runReveals(); maybeAnimateBars();
+  window.addEventListener('scroll', runReveals, {passive:true});
+})();
+</script>
+<footer class="legal-footer" style="max-width:900px;margin:44px auto 64px;padding:18px 22px;border-top:1px solid #E7DBC6;font-family:'Mulish',system-ui,sans-serif;font-size:.78rem;line-height:1.6;color:#9A8E7C"><b style="color:#6E6456">Personal study aid — not affiliated with the authors, institutions, or venues.</b> A non-commercial educational summary made for private study, commentary, and teaching. Any figures reproduced from the original paper remain the copyright of their respective authors/publishers and are shown under fair use (17 U.S.C. &sect;107) for commentary and education, each captioned with its source; all other diagrams and text are original, created by the site owner with AI assistance. No infringement is intended and no ownership is claimed over third-party material.</footer>
+</body>
+</html>
