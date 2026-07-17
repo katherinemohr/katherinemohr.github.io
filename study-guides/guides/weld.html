@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<!-- Weld field guide — A Common Runtime for High Performance Data Analytics
+     (Palkar, Thomas, Shanbhag, Narayanan, Pirk, Schwarzkopf, Amarasinghe, Zaharia, CIDR 2017).
+     Built in the "field guide" format, matching the PagedAttention / UCP guides.
+     Semantic colors: teal = fused/single-pass (the win) · indigo = Weld's IR machinery · honey = the core rule/callout · terracotta = eager/wasted passes / what breaks. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crossing Memory Once — Weld, a Field Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Mulish:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ============ DESIGN TOKENS ============ */
+:root{
+  --paper:#FBF6EC; --paper-2:#F3EADA; --card:#FFFDF8;
+  --ink:#332C24; --ink-soft:#6E6456; --ink-faint:#9A8E7C;
+  --line:#E7DBC6; --line-strong:#D8C8AC;
+  --honey:#E8A33D; --honey-deep:#C27D14; --honey-soft:#FBEACB;
+  --accent-2:#2C8C7C; --accent-2-soft:#DCEFE9;      /* teal    = fused / single-pass (the win) */
+  --accent-3:#5A61B4; --accent-3-soft:#E6E6F6;      /* indigo  = Weld's IR machinery            */
+  --accent-4:#C0563B; --accent-4-soft:#F7E1D8;      /* terracotta = eager / wasted passes        */
+  --shadow-sm:0 1px 2px rgba(80,60,30,.06), 0 2px 8px rgba(80,60,30,.05);
+  --shadow-md:0 4px 14px rgba(90,66,28,.10), 0 12px 30px rgba(90,66,28,.07);
+  --shadow-lg:0 10px 40px rgba(90,66,28,.14);
+  --radius:18px; --radius-sm:12px; --maxw:1080px;
+  --display:"Fraunces",Georgia,serif;
+  --body:"Mulish",-apple-system,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:var(--body);color:var(--ink);line-height:1.65;background:var(--paper);
+  background-image:
+    radial-gradient(circle at 12% 8%, rgba(44,140,124,.05), transparent 40%),
+    radial-gradient(circle at 88% 22%, rgba(90,97,180,.05), transparent 42%),
+    radial-gradient(circle at 50% 120%, rgba(232,163,61,.06), transparent 55%);
+  -webkit-font-smoothing:antialiased;}
+h1,h2,h3,h4{font-family:var(--display);font-weight:600;line-height:1.18;color:var(--ink);margin:0 0 .5em}
+p{margin:0 0 1em}
+a{color:var(--honey-deep);text-decoration:none;border-bottom:1.5px solid var(--honey-soft);transition:border-color .2s}
+a:hover{border-color:var(--honey)}
+strong{font-weight:700;color:#231d16}
+em{color:var(--ink-soft)}
+code{font-family:var(--mono);font-size:.92em;background:var(--paper-2);padding:1px 6px;border-radius:5px}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 22px}
+
+/* HERO */
+.hero{position:relative;overflow:hidden;padding:64px 0 52px;background:linear-gradient(180deg,#FFFBF2 0%,var(--paper) 100%);border-bottom:1px solid var(--line)}
+.hero::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:repeating-linear-gradient(0deg,transparent,transparent 31px,rgba(90,97,180,.05) 31px,rgba(90,97,180,.05) 32px);
+  -webkit-mask-image:linear-gradient(180deg,transparent,#000 30%,#000 60%,transparent);mask-image:linear-gradient(180deg,transparent,#000 30%,#000 60%,transparent);}
+.hero .wrap{position:relative}
+.eyebrow{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--honey-deep);background:var(--honey-soft);padding:7px 14px;border-radius:999px;border:1px solid #F0DCB0;margin-bottom:22px;}
+.eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--honey);box-shadow:0 0 0 4px rgba(232,163,61,.2)}
+.hero h1{font-size:clamp(2.1rem,5.6vw,3.7rem);font-weight:600;letter-spacing:-.015em;max-width:20ch;margin-bottom:.3em}
+.hero h1 .swash{font-style:italic;color:var(--accent-2);font-weight:500}
+.hero .lede{font-size:clamp(1.05rem,2.2vw,1.32rem);color:var(--ink-soft);max-width:50ch;margin-bottom:30px}
+.hero-meta{display:flex;flex-wrap:wrap;gap:10px;font-family:var(--mono);font-size:12.5px;color:var(--ink-soft)}
+.hero-meta span{background:var(--card);border:1px solid var(--line);padding:6px 12px;border-radius:999px}
+.rule-plaque{margin-top:34px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;background:var(--card);
+  border:1.5px solid var(--line-strong);border-radius:var(--radius);padding:22px 26px;box-shadow:var(--shadow-md);max-width:720px;position:relative;}
+.rule-plaque::after{content:"THE CORE ANALOGY";position:absolute;top:-11px;left:24px;font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;
+  color:#fff;background:var(--accent-3);padding:3px 10px;border-radius:6px;}
+.rule-plaque .glyph{font-size:2.6rem}
+.rule-plaque p{margin:0;font-family:var(--display);font-size:1.12rem;line-height:1.4}
+.rule-plaque .ro{color:var(--accent-2);font-weight:600}
+.rule-plaque .wo{color:var(--accent-4);font-weight:600}
+
+/* TAB NAV */
+.tabbar-outer{position:sticky;top:0;z-index:50;background:rgba(251,246,236,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.tabbar{display:flex;gap:6px;overflow-x:auto;padding:11px 22px;max-width:var(--maxw);margin:0 auto;scrollbar-width:none}
+.tabbar::-webkit-scrollbar{display:none}
+.tab-btn{flex:0 0 auto;font-family:var(--body);font-weight:700;font-size:14px;color:var(--ink-soft);background:transparent;border:1.5px solid transparent;
+  border-radius:999px;padding:8px 16px;cursor:pointer;white-space:nowrap;transition:all .18s;display:flex;align-items:center;gap:7px;}
+.tab-btn .n{font-family:var(--mono);font-size:11px;opacity:.6}
+.tab-btn:hover{color:var(--ink);background:var(--paper-2)}
+.tab-btn.active{color:#fff;background:var(--ink);border-color:var(--ink)}
+.tab-btn.active .n{opacity:.7;color:var(--honey)}
+
+/* PANELS */
+.tab-panel{display:none;animation:fade .4s ease}
+.tab-panel.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.panel-head{padding:46px 0 8px}
+.panel-head .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--honey-deep);margin-bottom:12px}
+.panel-head h2{font-size:clamp(1.9rem,4vw,2.8rem);letter-spacing:-.01em;margin-bottom:.25em}
+.panel-head .sub{font-size:1.1rem;color:var(--ink-soft);max-width:62ch}
+
+/* PROSE / CARDS */
+.prose{max-width:74ch}
+.prose p{font-size:1.03rem}
+.prose h3{font-size:1.5rem;margin-top:30px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px 28px;box-shadow:var(--shadow-sm);margin:18px 0}
+.card h3{font-size:1.3rem;margin-bottom:.4em}
+.seq{counter-reset:seq;list-style:none;padding:0;margin:18px 0}
+.seq li{position:relative;padding:0 0 18px 52px;margin:0}
+.seq li::before{counter-increment:seq;content:counter(seq,decimal-leading-zero);position:absolute;left:0;top:-2px;font-family:var(--mono);
+  font-size:13px;font-weight:700;color:var(--honey-deep);background:var(--honey-soft);border:1px solid #EFD9AC;border-radius:8px;width:34px;height:30px;
+  display:flex;align-items:center;justify-content:center;}
+
+/* PRIMER ACCORDION */
+.primer-grid{display:grid;grid-template-columns:1fr;gap:12px;margin:26px 0}
+.primer{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;transition:box-shadow .2s,border-color .2s}
+.primer[open]{box-shadow:var(--shadow-md);border-color:var(--line-strong)}
+.primer summary{list-style:none;cursor:pointer;padding:16px 20px;display:flex;align-items:center;gap:14px;font-weight:700;font-size:1.04rem}
+.primer summary::-webkit-details-marker{display:none}
+.primer summary .pnum{flex:0 0 auto;width:30px;height:30px;border-radius:9px;background:var(--accent-3-soft);color:var(--accent-3);font-family:var(--mono);font-size:13px;
+  display:flex;align-items:center;justify-content:center;font-weight:700;}
+.primer summary .chev{margin-left:auto;color:var(--ink-faint);transition:transform .25s;flex:0 0 auto;font-family:var(--mono)}
+.primer[open] summary .chev{transform:rotate(180deg)}
+.primer .body{padding:2px 20px 20px 64px;color:var(--ink-soft);font-size:1rem}
+.primer .body p:last-child{margin-bottom:0}
+.primer .ready{margin-top:14px;padding:12px 16px;background:var(--accent-2-soft);border-left:3px solid var(--accent-2);border-radius:0 10px 10px 0;color:#1f5b51;font-size:.96rem}
+.primer .ready b{color:#16463e}
+
+/* ANALOGY CARDS */
+.analogy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px;margin:24px 0}
+.analogy{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:24px;position:relative;box-shadow:var(--shadow-sm);transition:transform .2s,box-shadow .2s;overflow:hidden}
+.analogy:hover{transform:translateY(-4px);box-shadow:var(--shadow-md)}
+.analogy .ill{width:100%;height:120px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;background:var(--paper-2);border-radius:12px;border:1px dashed var(--line-strong)}
+.analogy .ill svg{width:140px;height:96px}
+.analogy h3{font-size:1.22rem;margin-bottom:.3em}
+.analogy .term{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--honey-deep);display:block;margin-bottom:8px}
+.analogy p{font-size:.98rem;color:var(--ink-soft);margin-bottom:.8em}
+.analogy .breaks{font-size:.9rem;color:var(--ink-faint);border-top:1px dashed var(--line-strong);padding-top:10px;margin-top:4px}
+.analogy .breaks b{color:var(--accent-4)}
+
+/* color chips */
+.mem-chip{display:inline-block;font-family:var(--mono);font-size:.82em;font-weight:700;padding:1px 8px;border-radius:6px;vertical-align:baseline}
+.chip-fused{background:var(--accent-2-soft);color:#1f5b51}
+.chip-rule{background:var(--honey-soft);color:#6e4a09}
+.chip-weld{background:var(--accent-3-soft);color:#3a409a}
+.chip-eager{background:var(--accent-4-soft);color:#9a3a22}
+
+/* CALLOUTS */
+.callout{border-radius:var(--radius-sm);padding:16px 20px;margin:18px 0;font-size:1rem;display:flex;gap:14px;align-items:flex-start}
+.callout .ic{flex:0 0 auto;font-size:1.15rem;line-height:1.3;font-weight:700}
+.callout.takeaway{background:var(--honey-soft);border:1px solid #EFD9AC;color:#6e4a09}
+.callout.why{background:var(--accent-2-soft);border:1px solid #B9E0D6;color:#1f5b51}
+.callout.note{background:var(--paper-2);border:1px solid var(--line-strong);color:var(--ink-soft)}
+.callout.warn{background:var(--accent-4-soft);border:1px solid #e3b4a5;color:#9a3a22}
+.callout b{color:inherit}
+
+/* FIGURE */
+figure.viz{margin:30px 0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow-md)}
+figure.viz figcaption{margin-top:18px;font-size:.94rem;color:var(--ink-soft);border-top:1px dashed var(--line-strong);padding-top:14px}
+.viz-title{font-family:var(--display);font-size:1.25rem;font-weight:600;margin-bottom:4px}
+.viz-kicker{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:18px}
+.legend{display:flex;flex-wrap:wrap;gap:16px;margin:14px 0 22px;font-size:.9rem;font-weight:600}
+.legend span{display:inline-flex;align-items:center;gap:7px;color:var(--ink-soft)}
+.legend i{width:14px;height:14px;border-radius:4px;display:inline-block}
+figure.viz svg.full{width:100%;height:auto;display:block}
+
+/* FLOW DIAGRAM */
+.flow-row{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;justify-content:center}
+.node{background:#fff;border:1.5px solid var(--line-strong);border-radius:14px;padding:14px 16px;min-width:150px;max-width:240px;box-shadow:var(--shadow-sm);position:relative}
+.node .nt{font-weight:700;font-size:.98rem;margin-bottom:4px}
+.node .nd{font-size:.85rem;color:var(--ink-soft);line-height:1.45}
+.node.n-fused{border-color:#9fd2c7;background:var(--accent-2-soft)}
+.node.n-weld{border-color:#bcbfe8;background:var(--accent-3-soft)}
+.node.n-eager{border-color:#e3b4a5;background:var(--accent-4-soft)}
+.node.n-rule{border-color:var(--honey);background:var(--honey-soft)}
+.flow-arrow{align-self:center;color:var(--ink-faint);font-size:1.4rem;display:flex;align-items:center;font-family:var(--mono)}
+
+/* TABLE */
+.tbl{width:100%;border-collapse:collapse;margin:18px 0;font-size:.92rem}
+.tbl th,.tbl td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line)}
+.tbl th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);font-weight:700}
+.tbl td.mono{font-family:var(--mono);font-size:.86rem}
+.tbl tr:hover td{background:var(--paper-2)}
+.tbl .best td{background:var(--accent-3-soft)}
+.tbl .best:hover td{background:#dcdef3}
+
+/* BAR CHART */
+.bars{margin:8px 0}
+.bar-row{display:grid;grid-template-columns:170px 1fr;gap:14px;align-items:center;margin:14px 0}
+.bar-label{text-align:right;font-weight:700;font-size:.92rem}
+.bar-label small{display:block;font-family:var(--mono);font-weight:500;font-size:10.5px;color:var(--ink-faint)}
+.bar-track{position:relative;height:38px;background:var(--paper-2);border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.bar-fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:10px;transition:width .5s cubic-bezier(.16,1,.3,1);display:flex;align-items:center;justify-content:flex-end;padding-right:10px}
+.bar-fill span{font-family:var(--mono);font-size:12px;font-weight:700;color:#fff;white-space:nowrap;opacity:0;transition:opacity .4s .2s}
+.bars.shown .bar-fill span{opacity:1}
+.bf-weld{background:linear-gradient(90deg,#6f76c9,#5A61B4)}
+.bf-fused{background:linear-gradient(90deg,#3aa392,#2C8C7C)}
+.bf-eager{background:linear-gradient(90deg,#cf6f56,#C0563B)}
+
+/* MEMORY-PASS SIMULATOR (interactive) */
+.pass-viz{display:grid;grid-template-columns:1fr;gap:14px}
+.pass-controls{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:6px 0}
+.pass-controls input[type=range]{flex:1;min-width:200px;accent-color:var(--accent-3)}
+.pass-readout{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.pstat{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-family:var(--mono);font-size:.85rem;min-width:150px}
+.pstat b{display:block;font-size:1.3rem;color:var(--ink);font-family:var(--display)}
+.pverdict{font-weight:700;font-size:1rem;padding:12px 16px;border-radius:10px;margin-top:12px;transition:.2s}
+.pverdict.opt{background:var(--accent-2-soft);color:#16463e;border:1px solid #9fd2c7}
+.pverdict.sub{background:var(--paper-2);color:var(--ink-soft);border:1px solid var(--line-strong)}
+.preset-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.tbtn{font-family:var(--body);font-weight:700;font-size:.85rem;border:1.5px solid var(--line-strong);background:#fff;border-radius:10px;padding:8px 12px;cursor:pointer;transition:all .15s}
+.tbtn:hover{border-color:var(--accent-3);color:var(--accent-3)}
+.tbtn.on{background:var(--accent-3);border-color:var(--accent-3);color:#fff}
+.pass-strip{display:flex;gap:4px;margin:6px 0}
+.pchunk{flex:1;height:40px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;font-weight:700;color:#fff}
+.pchunk.eager{background:var(--accent-4)}
+.pchunk.fused{background:var(--accent-2)}
+
+/* FAQ-style practice */
+.prob{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:20px 22px;margin:14px 0;box-shadow:var(--shadow-sm)}
+.prob .ptag{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:6px;margin-bottom:10px;font-weight:700;background:var(--accent-3-soft);color:#3a409a}
+.prob .qtext{font-weight:600;margin-bottom:8px}
+.prob details{margin-top:6px}
+.prob summary{cursor:pointer;color:var(--honey-deep);font-weight:700;font-size:.92rem;list-style:none}
+.prob summary::-webkit-details-marker{display:none}
+.prob summary::before{content:"▸ ";font-family:var(--mono)}
+.prob details[open] summary::before{content:"▾ "}
+.prob .ans{margin-top:10px;padding:14px 16px;background:var(--paper-2);border-radius:10px;font-size:.96rem;color:var(--ink-soft)}
+
+/* CODE */
+pre.sketch{background:#2c2620;color:#f3ead9;border-radius:14px;padding:20px 22px;overflow-x:auto;font-family:var(--mono);font-size:.86rem;line-height:1.7;margin:12px 0;box-shadow:var(--shadow-md)}
+pre.sketch .kw{color:#e8a33d} pre.sketch .cm{color:#8a9a7c;font-style:italic} pre.sketch .hl{color:#7e8ad6}
+
+/* GLOSSARY */
+.gloss{columns:2;column-gap:26px}
+.gloss .term-def{break-inside:avoid;margin:0 0 14px;font-size:.95rem}
+.gloss .term-def b{display:block;color:var(--ink);font-family:var(--display);font-size:1rem}
+.gloss .term-def span{color:var(--ink-soft)}
+.subhead{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--honey-deep);margin:28px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.read-item{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:18px 20px;margin:12px 0}
+.read-item h4{font-size:1.05rem;margin-bottom:6px}
+.read-item .meta{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-bottom:8px}
+.read-item p{font-size:.94rem;color:var(--ink-soft);margin:0}
+.diff{display:inline-block;font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:5px;font-weight:700;margin-left:6px}
+.diff.easy{background:var(--accent-2-soft);color:#1f5b51}
+.diff.med{background:var(--honey-soft);color:#6e4a09}
+.diff.hard{background:var(--accent-4-soft);color:#9a3a22}
+
+.foot{margin-top:60px;border-top:1px solid var(--line);background:var(--paper-2)}
+.foot .wrap{padding:30px 22px;font-size:.9rem;color:var(--ink-soft);display:flex;flex-wrap:wrap;gap:8px 28px}
+.foot b{color:var(--ink)}
+
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .6s,transform .6s}
+.reveal.in{opacity:1;transform:none}
+@media(max-width:820px){.pass-readout{flex-direction:column}.gloss{columns:1}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}.reveal{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow"><span class="dot"></span>CIDR 2017 · A Field Guide</span>
+    <h1>Crossing memory <span class="swash">once</span>, not <span class="swash" style="color:var(--accent-4)">once per library</span></h1>
+    <p class="lede">Pandas, NumPy, TensorFlow, and Spark SQL are each well-optimized on their own. Chain them together and each call still reads its input, does its work, and writes a full result back to memory before the next one starts. <strong>Weld</strong> fuses those calls into one pass — without changing a line of your code.</p>
+    <div class="hero-meta">
+      <span>📄 Palkar, Thomas, et al. · "Weld" · CIDR 2017</span>
+      <span>🎓 PL background helps (SSA, linear types) — primers cover the rest</span>
+      <span>⏱ ~30 min read</span>
+    </div>
+    <div class="rule-plaque">
+      <div class="glyph">⏳</div>
+      <p><span class="ro">A narrow-waist IR</span> that many libraries compile into, so a lazy runtime can <span class="wo">fuse their loops</span> before generating machine code.<br><em style="font-size:.9rem">None of this changes the library's user-facing API.</em></p>
+    </div>
+  </div>
+</header>
+
+<!-- ============ TAB NAV ============ -->
+<nav class="tabbar-outer">
+  <div class="tabbar" role="tablist">
+    <button class="tab-btn active" data-tab="start"><span class="n">01</span>Start Here</button>
+    <button class="tab-btn" data-tab="idea"><span class="n">02</span>The Big Idea</button>
+    <button class="tab-btn" data-tab="analogies"><span class="n">03</span>Analogies</button>
+    <button class="tab-btn" data-tab="how"><span class="n">04</span>How It Works</button>
+    <button class="tab-btn" data-tab="example"><span class="n">05</span>Worked Example</button>
+    <button class="tab-btn" data-tab="results"><span class="n">06</span>Key Results</button>
+    <button class="tab-btn" data-tab="practice"><span class="n">07</span>Practice</button>
+    <button class="tab-btn" data-tab="reference"><span class="n">08</span>Reference</button>
+  </div>
+</nav>
+
+<main>
+
+<!-- ============ TAB 1: START HERE ============ -->
+<section class="tab-panel active" id="tab-start">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Before you begin</div>
+      <h2>What this paper assumes you know</h2>
+      <p class="sub">This paper leans harder on PL background (SSA, linear types, monad comprehensions) than most systems papers, and lighter on systems background. These three cards cover both sides. Collapsed by default; open whatever's unfamiliar.</p>
+    </div>
+
+    <div class="primer-grid">
+      <details class="primer" open>
+        <summary><span class="pnum">1</span>Why does data movement dominate?<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>Most analytics operations (sum, filter, elementwise map) do very little arithmetic per byte of data — the paper calls this <b>data-intensive</b> (§1). Modern CPUs can do many arithmetic operations per cycle but can only pull a limited amount of data from RAM per cycle, and that gap has been widening for decades — the "memory wall."</p>
+          <p>When each library call <b>materializes</b> (fully computes and writes out) its result before the next call reads it, you pay for that RAM traffic once per call. <b>Chain five cheap operations and you've paid for five full passes over the data through memory</b>, even though the CPU sits mostly idle waiting on memory the whole time.</p>
+          <div class="ready"><b>Now you're ready:</b> this isn't a Pandas or NumPy bug. It's what happens whenever separately-materializing calls are composed — and it's the entire problem Weld exists to fix.</div>
+        </div>
+      </details>
+      <details class="primer">
+        <summary><span class="pnum">2</span>Query compilation vs. the iterator model<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>Classic database engines execute a query plan using the <b>Volcano iterator model</b>: each operator (scan, filter, join…) is an object with a <code>next()</code> method, and rows are pulled through the operator tree one at a time. This generalizes well, but has real per-tuple overhead — virtual calls, no vectorization.</p>
+          <p>The alternative, used in HyPer (Neumann, VLDB 2011) and referenced throughout this paper, is <b>whole-stage code generation</b>: compile the entire query plan into one tight loop of native code, so the CPU's pipeline and SIMD units stay busy instead of dispatching per operator.</p>
+          <div class="ready"><b>Now you're ready:</b> Weld's loop fusion is doing something structurally similar to whole-stage codegen — but across <i>library</i> boundaries instead of just operators within one query engine.</div>
+        </div>
+      </details>
+      <details class="primer">
+        <summary><span class="pnum">3</span>PL machinery: SSA, linear types, monad comprehensions<span class="chev">▾</span></summary>
+        <div class="body">
+          <p><b>SSA (Static Single Assignment):</b> each variable is assigned exactly once, so data-flow analysis doesn't need to reason about mutation — ordinary compiler-IR discipline.</p>
+          <p><b>Linear type:</b> a value that must be consumed exactly once along every control path. Think Rust's ownership discipline, or affine logic — no aliasing, no dropping.</p>
+          <p><b>Monad comprehension:</b> a generalization of the list-comprehension / <code>for</code>-<code>yield</code> pattern to arbitrary monads — a standard way to give a uniform IR to nested, composable "query-like" computations (Grust 2004).</p>
+          <div class="ready"><b>Now you're ready:</b> Weld's IR is deliberately close to a monad comprehension, and its builder abstraction is a linear type by design, not by accident — both choices do real technical work later.</div>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 2: THE BIG IDEA ============ -->
+<section class="tab-panel" id="tab-idea">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">The whole story in one place</div>
+      <h2>Weld in a nutshell</h2>
+      <p class="sub">The problem, the fix, and the result.</p>
+    </div>
+    <div class="prose">
+      <p>Modern data analytics code glues together specialized libraries — Pandas for wrangling, NumPy for linear algebra, TensorFlow for learning, Spark SQL for queries. Each is well-optimized in isolation, but composing them is slow, because every library call reads its input from memory, does its work, and writes a full result back to memory before the next call starts. On modern hardware, that repeated memory traffic — not the actual computation — is often the bottleneck (§1).</p>
+      <p>Weld's fix is not a new "one API to rule them all." It's a <strong>narrow waist</strong>: a small intermediate representation (IR) that libraries compile fragments of their work into, plus a <strong>lazy runtime API</strong> that collects those fragments across library and even language boundaries and jointly optimizes them — chiefly by fusing loops so data crosses memory once instead of N times — before generating multithreaded, vectorized machine code via LLVM (§3). Crucially, none of this changes the library's user-facing API: you keep writing <code>pandas</code> and <code>numpy</code> code exactly as before (§5).</p>
+      <p><strong>The payoff:</strong> retrofitting Weld into TensorFlow, Spark SQL, NumPy, and Pandas — with roughly 500 lines of one-time glue code per framework (Table 3) — yields speedups up to <b>32×</b> on individual operators and up to <b>250×</b> on workflows that chain several libraries together (§6), without asking those frameworks' users to change a line of their own code.</p>
+    </div>
+
+    <div class="card" style="background:var(--honey-soft);border-color:#EFD9AC">
+      <h3 style="color:#6e4a09">🍯 Key takeaways</h3>
+      <ul style="margin:0;padding-left:20px;color:#6e4a09">
+        <li>The bottleneck is <b>data movement</b>, not compute — each library call is already close to optimal on its own.</li>
+        <li>Weld exposes only <b>one</b> parallel primitive (<code>for</code> + builders); <code>map</code>/<code>filter</code>/<code>reduce</code> are sugar over it, which is exactly what makes fusion possible.</li>
+        <li><b>Builders</b> are linear types — a discipline borrowed from substructural type theory that licenses safe in-place mutation under an immutable-looking interface.</li>
+        <li>Library calls build an IR expression <b>lazily</b>; nothing runs until a result is actually needed, at which point the whole accumulated expression is optimized as one unit.</li>
+        <li>Because the IR is <b>explicitly</b> parallel by grammar, the backend never needs dependence analysis to prove a loop safe to parallelize — it's true by construction.</li>
+        <li>Result: up to <b>32×</b> on single operators, up to <b>250×</b> on chained workflows, for ~500 lines of one-time glue per framework.</li>
+      </ul>
+    </div>
+
+    <!-- SIGNATURE FIGURE -->
+    <figure class="viz reveal">
+      <div class="viz-title">The whole paper in one picture</div>
+      <div class="viz-kicker">headline speedups reported in the paper (§6)</div>
+      <div class="legend">
+        <span><i style="background:var(--accent-2)"></i> single operator</span>
+        <span><i style="background:var(--accent-3)"></i> chained cross-library workflow</span>
+      </div>
+      <div class="bars" id="headlineBars">
+        <div class="bar-row"><div class="bar-label">TensorFlow logreg<small>1 core</small></div><div class="bar-track"><div class="bar-fill bf-fused" data-w="32"><span>32×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">Word2Vec<small>vs. stock TensorFlow</small></div><div class="bar-track"><div class="bar-fill bf-fused" data-w="12"><span>12×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">Pandas cleaning<small>1 core</small></div><div class="bar-track"><div class="bar-fill bf-fused" data-w="4.2"><span>4.2×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">Spark UDF<small>vectorized</small></div><div class="bar-track"><div class="bar-fill bf-weld" data-w="14"><span>14×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">Pandas+NumPy<small>1 core, cross-library</small></div><div class="bar-track"><div class="bar-fill bf-weld" data-w="31"><span>31×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">Pandas+NumPy<small>+12 cores, stacked</small></div><div class="bar-track"><div class="bar-fill bf-weld" data-w="100"><span>250× total</span></div></div></div>
+      </div>
+      <figcaption><b>Read the last two rows together:</b> 31× comes from fusing across Pandas and NumPy on a single core; parallelizing the fused loop across 12 cores multiplies that by a further 8×, for a stated overall 250× vs. the original single-threaded Pandas baseline (§6.3). The bar is capped visually at 100 — the true multiple is 250×. (Paper, Figs. 4–5)</figcaption>
+    </figure>
+
+    <!-- CONCEPT MAP -->
+    <figure class="viz reveal">
+      <div class="viz-title">How the pieces connect</div>
+      <div class="viz-kicker">problem → IR → runtime → backend → result</div>
+      <div class="flow-row">
+        <div class="node n-eager"><div class="nt">Problem</div><div class="nd">Separately-materializing library calls multiply memory traffic</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node n-rule"><div class="nt">Weld IR</div><div class="nd">for + builders — the only parallel primitive; everything else is sugar</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node n-weld"><div class="nt">Lazy runtime</div><div class="nd">Library calls build IR fragments; nothing runs until a result is needed</div></div>
+      </div>
+      <div style="text-align:center;margin:12px 0;color:var(--ink-faint);font-family:var(--mono);font-size:1.3rem">↓</div>
+      <div class="flow-row">
+        <div class="node n-fused"><div class="nt">Fusion</div><div class="nd">evaluate() optimizes the whole accumulated expression, fusing loops</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node n-eager"><div class="nt">LLVM backend</div><div class="nd">Explicit parallelism in the IR → multithreaded, vectorized code, no dependence analysis needed</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node n-weld"><div class="nt">Result</div><div class="nd">Up to 32× per-op, up to 250× on chained workflows</div></div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ TAB 3: ANALOGIES ============ -->
+<section class="tab-panel" id="tab-analogies">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Six everyday pictures</div>
+      <h2>How to think about Weld's design</h2>
+      <p class="sub">Each picture stands alone — read them in any order. Every card ends with an honest note about where the picture stops being true.</p>
+    </div>
+    <div class="analogy-grid">
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <path d="M20 16 h100 l-46 32 l46 32 h-100 l46 -32 Z" fill="#E6E6F6" stroke="#5A61B4" stroke-width="2.2"/>
+          <circle cx="70" cy="48" r="4" fill="#5A61B4"/>
+        </svg></div>
+        <span class="term">The whole design · The narrow waist</span>
+        <h3>The internet's hourglass</h3>
+        <p>IP is famous for being a "narrow waist": countless applications sit above it, countless link-layer technologies sit below, and everything is forced through one small, stable protocol in the middle — which is exactly what lets any app run over any network. Weld's IR plays the same role for analytics libraries: SQL, ML, and graph workloads all compile down through one small IR, and any Weld-enabled library can be optimized alongside any other (§2, §3).</p>
+        <div class="breaks"><b>Where it's narrower:</b> IP's waist is universally deployed across the internet; Weld's waist only helps the specific libraries someone has taken the ~500 lines of glue effort to port (Table 3).</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="10" y="40" width="26" height="20" rx="3" fill="#F7E1D8" stroke="#C0563B" stroke-width="2"/>
+          <rect x="57" y="40" width="26" height="20" rx="3" fill="#F7E1D8" stroke="#C0563B" stroke-width="2"/>
+          <rect x="104" y="40" width="26" height="20" rx="3" fill="#F7E1D8" stroke="#C0563B" stroke-width="2"/>
+          <path d="M36 50 h21 M83 50 h21" stroke="#9A8E7C" stroke-width="2" stroke-dasharray="3 2"/>
+          <path d="M23 40 v-14 M70 40 v-14 M117 40 v-14" stroke="#9A8E7C" stroke-width="1.6"/>
+        </svg></div>
+        <span class="term">The problem · Materialization</span>
+        <h3>An assembly line that reboxes at every station</h3>
+        <p>Imagine a factory line where each station fully seals the product in a shipping box before handing it to the next station — which immediately unboxes it, does one small thing, and reboxes it again. Every station's own work is fast; the packing and unpacking dominate. That's <code>filter</code> then <code>sum</code>: Pandas writes a complete materialized boolean-masked array, and NumPy reads the whole thing back in to add it up (§1, Listing 5).</p>
+        <div class="breaks"><b>Where it holds tightly:</b> nothing about either station is broken — the paper is explicit that each library is close to optimal alone. The waste is purely in the packaging between stations.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="24" y="20" width="92" height="40" rx="6" fill="#fff" stroke="#5A61B4" stroke-width="2"/>
+          <line x1="24" y1="34" x2="116" y2="34" stroke="#D8C8AC"/>
+          <circle cx="34" cy="27" r="2.5" fill="#5A61B4"/><circle cx="34" cy="47" r="2.5" fill="#5A61B4"/>
+          <path d="M40 44 v18 M40 62 h30 M64 56 l6 6 l-6 6" stroke="#2C8C7C" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg></div>
+        <span class="term">The runtime API · Laziness</span>
+        <h3>A shopping cart, not an express checkout</h3>
+        <p>Adding items to an online cart doesn't ship them one at a time — nothing moves until checkout, at which point the store can combine everything into one optimized shipment. Weld-enabled library calls work the same way: each one builds an IR fragment and returns lazily; nothing executes until some call that must produce a concrete result (the paper's example: Python's <code>print</code>) forces <code>evaluate()</code>, and only then does the accumulated expression get optimized and run as one unit (§5).</p>
+        <div class="breaks"><b>Where it holds tightly:</b> this is exactly what makes "no changes to user-facing APIs" deliverable — the laziness is invisible inside the library's internals, never seen by the caller's code.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="50" y="14" width="40" height="22" rx="4" fill="#FBEACB" stroke="#C27D14" stroke-width="2"/>
+          <text x="70" y="29" text-anchor="middle" font-family="monospace" font-size="9" fill="#6e4a09">CLAIM</text>
+          <path d="M70 36 v16" stroke="#9A8E7C" stroke-width="2" stroke-dasharray="3 2"/>
+          <circle cx="70" cy="60" r="14" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2.2"/>
+          <path d="M64 60 l4 5 l8 -10" stroke="#1f5b51" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <text x="70" y="86" text-anchor="middle" font-family="monospace" font-size="8" fill="#9A8E7C">redeemed exactly once</text>
+        </svg></div>
+        <span class="term">Builders · Linear types</span>
+        <h3>A single-use claim ticket</h3>
+        <p>A coat-check ticket is meant to be redeemed exactly once — no aliasing it to two coats, no losing it and expecting the coat back. A builder is the same discipline formalized as a type: it "must be consumed exactly once per control path... formally builders are a linear type" (§4.2). Because the IR's semantics say <code>merge</code> returns a "new" builder rather than mutating the old one, linearity — no live aliases of the same builder — is exactly what lets the backend implement builders as ordinary mutable memory underneath, safely. It's the same move as Rust's borrow checker or affine logic.</p>
+        <div class="breaks"><b>Where it's narrower than Rust:</b> Rust also has <i>borrowing</i> — temporary shared/exclusive references that don't transfer ownership. Weld's builders have no borrowing concept at all; they're closer to a pure "must consume exactly once" discipline than Rust's fuller ownership-plus-borrowing model.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="18" y="24" width="30" height="46" rx="4" fill="#F7E1D8" stroke="#C0563B" stroke-width="2"/>
+          <path d="M28 40 h10 M28 50 h10" stroke="#9a3a22" stroke-width="2"/>
+          <rect x="92" y="24" width="30" height="46" rx="4" fill="#F7E1D8" stroke="#C0563B" stroke-width="2"/>
+          <path d="M102 40 h10 M102 50 h10" stroke="#9a3a22" stroke-width="2"/>
+          <text x="70" y="52" text-anchor="middle" font-family="monospace" font-size="16" fill="#9A8E7C">✕</text>
+        </svg></div>
+        <span class="term">Where it breaks · Sealed containers</span>
+        <h3>Sealed shipping containers vs. loose pallets</h3>
+        <p>If <code>map</code> and <code>reduce</code> were opaque, sealed shipping containers, there's no way to combine two containers' contents into one shipment after they're already sealed — you'd need a purpose-built <code>mapAndReduce</code> container for every combination anyone might request, forever. Weld instead ships the goods as loose pallets (<code>for</code> + builders) that stay combinable right up until the truck actually leaves — <code>map</code> and <code>reduce</code> are just labels for particular pallet arrangements, so a single loop can merge into two builders (do a map <i>and</i> a reduce) at once (§4.4).</p>
+        <div class="breaks"><b>Where it's the sharpest argument in the paper:</b> this generalizes past Weld — the more an IR "knows" about high-level operator identity, the harder fusion becomes, because you need an explicit rewrite rule for every pair you want to fuse.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="20" y="20" width="100" height="56" rx="6" fill="none" stroke="#9A8E7C" stroke-width="2" stroke-dasharray="4 3"/>
+          <text x="70" y="14" text-anchor="middle" font-family="monospace" font-size="9" fill="#9a3a22">built into the blueprint</text>
+          <rect x="34" y="34" width="30" height="28" rx="3" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <rect x="76" y="34" width="30" height="28" rx="3" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <text x="49" y="52" text-anchor="middle" font-family="monospace" font-size="8" fill="#1f5b51">core 1</text>
+          <text x="91" y="52" text-anchor="middle" font-family="monospace" font-size="8" fill="#1f5b51">core 2</text>
+        </svg></div>
+        <span class="term">The backend · Explicit parallelism</span>
+        <h3>Building codes in the blueprint, not an inspector after the fact</h3>
+        <p>A general-purpose compiler parallelizing an ordinary loop is like a safety inspector examining a finished building for hazards — it has to reconstruct, via analysis, whether it's actually safe. Weld instead bakes the safety rule into the blueprint: <code>for</code> is the <i>only</i> way to launch parallel work, and it's a grammatical primitive, not something inferred. The backend never needs dependence analysis to prove a loop parallelizable — it's true by construction (§3, §4).</p>
+        <div class="breaks"><b>The cost of this guarantee:</b> it's also why Hogwild!-style intentionally racy algorithms can't be expressed — the IR's determinism, which is what makes the "provably safe by grammar" trick work, structurally excludes them (§4.3).</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 4: HOW IT WORKS ============ -->
+<section class="tab-panel" id="tab-how">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">The full explanation</div>
+      <h2>How it actually works</h2>
+      <p class="sub">Section by section, with an interactive memory-pass simulator you can drive yourself.</p>
+    </div>
+
+    <div class="prose">
+      <h3>1 · The core problem — separately-optimized functions, jointly terrible data movement</h3>
+      <p>Section 1's opening example: TensorFlow uses hand-tuned BLAS kernels inside each operator, yet a computation chaining several operators can be <b>10–30× slower</b> than hand-written code doing the same math. Nothing is individually broken — each function taken alone is close to optimal. The problem is structural: in the eager model, each call is a black box that doesn't know what will be done with its output, so it must fully materialize a correct, complete result. There is no single point in the system — no RDBMS-style optimizer — that sees both the <code>&gt;</code> comparison and the <code>sum</code> together and realizes they can be fused into one predicate-accumulate loop.</p>
+      <div class="callout note"><span class="ic">🏛️</span><div><b>Historical framing:</b> an RDBMS solved exactly this by owning the whole query and optimizing it as one program. The library ecosystem gave up that whole-program view in exchange for reusable, independently developed libraries — Weld's bet is you can get some of both back (§1).</div></div>
+    </div>
+
+    <div class="prose">
+      <h3>2 · Design philosophy — a minimal common denominator, not an über-system</h3>
+      <p>Section 2 rejects the seemingly obvious alternative — extend an RDBMS's optimizer with ML and graph primitives — citing MADlib as evidence that in-database ML libraries lag behind, can't express things like deep learning naturally in SQL, and that adding operators to a database engine is a slow, high-expertise task limited to core developers. Instead Weld commits to three principles:</p>
+      <ol class="seq">
+        <li><b>Work with independently written libraries.</b> Don't wait for one system to reimplement every algorithm; extract just enough structure to optimize across existing libraries.</li>
+        <li><b>Target only the highest-leverage optimizations</b> — data movement and parallelism, not domain-specific rewrites. The claim: these two general-purpose optimizations already buy up to <b>31×</b> on a single core from data movement alone.</li>
+        <li><b>Integrate incrementally.</b> A library can port only some functions and leave the rest untouched; Weld's surface mirrors familiar functional idioms (<code>map</code>, <code>reduce</code>).</li>
+      </ol>
+      <div class="callout warn"><span class="ic">⚠</span><div><b>A real trade-off, not a free lunch:</b> by refusing to understand what a computation means semantically, Weld gives up domain-specific optimizations (e.g. algebraic rewrites specific to matrix multiplication) in exchange for breadth — the same IR has to serve SQL, ML, and graph workloads.</div></div>
+    </div>
+
+    <div class="prose">
+      <h3>3 · The Weld IR — parallel loops plus "builders"</h3>
+      <p>An IR for Weld needs three properties at once (§4): support for <b>nesting</b> computations from different libraries, <b>explicit</b> parallelism rather than something the backend infers, and the ability to represent both a computation and its rewritten form after an optimization like fusion. The paper explicitly tried and rejected two alternatives: relational algebra is explicitly parallel but awkward at expressing nesting; LLVM IR supports nesting fine but isn't explicitly parallel, forcing exactly the kind of dependence-analysis inference the design wants to avoid.</p>
+      <p>The IR they landed on is deliberately close to a <b>monad comprehension</b>, built from two constructs (Table 2):</p>
+      <ul style="padding-left:20px;margin:0 0 12px">
+        <li><code>for(vector, builders, func)</code> — the <i>only</i> way to launch parallel work. Applies <code>func</code> to every element "in parallel," threading builder state through, and can nest (a <code>for</code> inside a <code>for</code>'s body) for irregular parallelism.</li>
+        <li><b>Builders</b> — declarative, write-only accumulators: <code>vecbuilder[T]</code>, <code>merger[T,func,id]</code> (a user-suppliable monoid), <code>dictmerger[K,V,func]</code>, <code>vecmerger[T,func]</code>, <code>groupbuilder[K,V]</code>. <code>merge(b,v)</code> adds a value and returns a new builder; <code>result(b)</code> destroys the builder and yields its final value.</li>
+      </ul>
+      <pre class="sketch"><span class="cm">// map AND reduce in one loop — both are sugar over one primitive</span>
+result(
+  for(data, {vecbuilder[int], merger[+]},
+      (bs, x) =&gt; {merge(bs.0, x+1), merge(bs.1, x)}
+  )) <span class="cm">// returns {[2,3,4], 6}</span></pre>
+      <div class="callout why"><span class="ic">💡</span><div><b>Builders are linear types, precisely.</b> "Each builder must be consumed... exactly once per control path... formally builders are a linear type" (§4.2). This licenses the backend to implement <code>merge</code> — which the IR presents as returning a "new" builder — as in-place mutation underneath a purely functional-looking surface language, with no risk of two live references seeing inconsistent state.</div></div>
+      <p><b>Why not just expose map/filter/reduce directly?</b> This is the paper's sharpest argument (§4.4). Both <code>r1 := map(data, x =&gt; x+1)</code> and <code>r2 := reduce(data, 0, +)</code> scan the same array — but there's no <code>mapAndReduce</code> primitive, and you can't enumerate one for every combination someone might chain. Higher-level, "closed" combinators are exactly the wrong abstraction level for fusion, because fusion requires breaking two already-compiled operators apart and re-fusing their loop bodies. Exposing only the lower-level <code>for</code>+builders primitive makes <code>map</code>/<code>reduce</code> pure syntactic sugar, so both can trivially share one loop body.</p>
+      <div class="callout warn"><span class="ic">⚠</span><div><b>A stated limitation:</b> because <code>for</code>/builders execution is fully deterministic (merges are associative/reorderable, but the result never depends on thread scheduling), Weld's IR cannot express intentionally racy, asynchronous algorithms like Hogwild! parallel SGD — flagged as future work, not solved (§4.3).</div></div>
+    </div>
+
+    <div class="prose">
+      <h3>4 · The runtime API — lazy evaluation across library (and language) boundaries</h3>
+      <p>Section 5: no single library hand-writes a whole cross-library Weld program, so each Weld-enabled method builds an IR expression object lazily instead of computing eagerly. The runtime accumulates these into a DAG of IR fragments as user code runs. Nothing executes until some call that must produce a concrete output (the paper's example: Python's <code>print</code>, invoking <code>__str__</code>) calls <code>evaluate()</code> — at which point the <i>entire</i> accumulated expression is optimized as one unit and compiled/executed.</p>
+      <p>Walking the paper's own running example (Listings 5–8):</p>
+      <pre class="sketch"><span class="kw">def</span> large_cities_population(data):
+    filtered = data[data["population"] &gt; 500000]
+    total = numpy.sum(filtered)
+    print(total)  <span class="cm"># forces evaluate() — nothing ran before this line</span></pre>
+      <p>Weld-enabled Pandas compiles <code>&gt;</code> to <code>filter(v0, x =&gt; x &gt; c0)</code>; Weld-enabled NumPy compiles <code>sum</code> to <code>reduce(v0, 0, +)</code>. Because both are lazy, composing them just substitutes one fragment's output into the other's input: <code>reduce(filter(v0, x =&gt; x &gt; 500000), 0, +)</code>. Only when <code>print</code> forces evaluation does loop fusion collapse the two logical passes into one physical loop:</p>
+      <pre class="sketch">result(for(v0, merger[+,0],
+        (b, x) =&gt; <span class="kw">if</span> (x &gt; 500000) merge(b, x) <span class="kw">else</span> b))</pre>
+      <p>One pass over <code>v0</code>, a predicated branch instead of a materialized filtered array, one accumulator.</p>
+    </div>
+
+    <!-- INTERACTIVE: memory pass simulator -->
+    <figure class="viz reveal">
+      <div class="viz-title">Try it: how many passes does your pipeline cost?</div>
+      <div class="viz-kicker">drag the chain length and watch memory traffic — eager vs. fused</div>
+      <div class="pass-viz">
+        <div>
+          <div style="font-family:var(--mono);font-size:.85rem;color:var(--ink-soft);margin-bottom:6px">eager (today) — one pass per operation:</div>
+          <div class="pass-strip" id="eagerStrip"></div>
+          <div style="font-family:var(--mono);font-size:.85rem;color:var(--ink-soft);margin:14px 0 6px">Weld (fused) — always one pass, regardless of chain length:</div>
+          <div class="pass-strip" id="fusedStrip"></div>
+          <div class="pass-controls">
+            <span style="font-family:var(--mono);font-size:.85rem;color:var(--ink-soft)">chained operations:</span>
+            <input type="range" min="1" max="8" value="2" id="passRange">
+            <span class="mono" id="passRangeVal" style="font-family:var(--mono);font-weight:700;color:var(--accent-3)">2</span>
+          </div>
+          <div class="preset-row">
+            <button class="tbtn" data-set="2">filter + sum (the paper's example)</button>
+            <button class="tbtn" data-set="5">"chain five cheap operations"</button>
+            <button class="tbtn" data-set="8">a long pipeline</button>
+          </div>
+          <div class="pass-readout">
+            <div class="pstat">eager: memory passes<b id="eagerPasses">—</b></div>
+            <div class="pstat">eager: arrays materialized<b id="eagerAlloc">—</b></div>
+            <div class="pstat">Weld: memory passes<b id="fusedPasses">—</b></div>
+            <div class="pstat">Weld: arrays materialized<b id="fusedAlloc">—</b></div>
+          </div>
+          <div class="pverdict opt" id="passVerdict">Move the slider…</div>
+        </div>
+      </div>
+      <figcaption><b>What you'll find:</b> the eager strip grows by one full memory pass per chained operation; the fused strip never grows past one, because loop fusion collapses the whole chain into a single loop body regardless of how many operations it contains. This dramatizes the paper's own claim — "chain five cheap operations and you've paid for five full passes over the data" (Prerequisites, §1) — and the general shape of "up to 31× from data-movement optimizations alone" (§2); the exact multiplier for a real workload depends on what those operations are, not just how many there are.</figcaption>
+    </figure>
+
+    <div class="prose">
+      <h3>5 · The compiler backend — why explicit parallelism in the IR matters operationally</h3>
+      <p>The backend targets LLVM, and because Weld's IR is <i>explicitly</i> parallel by construction — <code>for</code> is the only way to launch parallel work, a primitive of the grammar, not something inferred — the backend can mechanically lower it to multithreaded code and auto-vectorize using Intel AVX2, without the dependence analysis a general-purpose compiler would need to safely parallelize arbitrary sequential loops. This is the direct payoff of the IR design: pushing the "is this safe to parallelize" question into the IR's grammar means the backend never has to <i>prove</i> safety — it's true by construction (§3, §5).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 5: WORKED EXAMPLE ============ -->
+<section class="tab-panel" id="tab-example">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Follow the steps</div>
+      <h2>The paper's running example, end to end</h2>
+      <p class="sub"><code>filtered = data[data["population"] &gt; 500000]; total = numpy.sum(filtered); print(total)</code> — lightly modernized from the paper's Python 2 syntax (Listings 5–8).</p>
+    </div>
+
+    <div class="card reveal">
+      <h3>① The comparison — <code>data["population"] &gt; 500000</code></h3>
+      <ol class="seq">
+        <li><b>Eager:</b> full scan of the population column; allocate and write a complete boolean-masked array to memory.</li>
+        <li><b>Weld:</b> build the IR fragment <code>filter(v0, x =&gt; x &gt; 500000)</code>. Nothing executes yet.</li>
+      </ol>
+    </div>
+
+    <div class="card reveal">
+      <h3>② The reduction — <code>numpy.sum(filtered)</code></h3>
+      <ol class="seq">
+        <li><b>Eager:</b> a second full scan, reading the masked array back from memory, accumulating as it goes.</li>
+        <li><b>Weld:</b> build the IR fragment <code>reduce(v0', 0, +)</code>, composed onto the filter fragment. Still nothing executes.</li>
+      </ol>
+    </div>
+
+    <div class="card reveal">
+      <h3>③ The forcing point — <code>print(total)</code></h3>
+      <ol class="seq">
+        <li><b>Eager:</b> already done — the work happened at steps ① and ②.</li>
+        <li><b>Weld:</b> <code>print</code> forces <code>evaluate()</code>. The optimizer fuses filter + reduce into one <code>for</code> over <code>v0</code> with a predicated <code>merge</code> into a <code>merger[+,0]</code> — this is the only point anything actually runs.</li>
+      </ol>
+    </div>
+
+    <div class="card reveal">
+      <h3>④ The tally: memory traffic</h3>
+      <ol class="seq">
+        <li><b>Eager:</b> 2 full passes over the data, 1 full intermediate array materialized and immediately thrown away.</li>
+        <li><b>Weld:</b> 1 full pass over the data, 0 intermediate arrays.</li>
+      </ol>
+      <div class="callout warn"><span class="ic">⚠</span><div><b>Common mistake:</b> assuming the speedup comes from Weld's code being individually faster than Pandas/NumPy's C++ internals per operation. It doesn't need to be — both are already reasonably fast in isolation. The entire win here is eliminating a redundant <i>pass over memory</i> and an <i>intermediate allocation</i>, a data-movement optimization, not a raw-compute one. That distinction is the paper's central thesis in miniature.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 6: KEY RESULTS ============ -->
+<section class="tab-panel" id="tab-results">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">What the evaluation shows</div>
+      <h2>Key results</h2>
+      <p class="sub">All numbers as reported in the paper; conditions (thread count, dataset scale) are included because the paper's own figures depend on them.</p>
+    </div>
+
+    <table class="tbl">
+      <thead><tr><th>Finding</th><th>Numbers</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr class="best"><td><b>Raw perf. vs. state of the art</b></td><td>TPC-H Q1/Q3/Q6/Q12 (SF10, 12-core Xeon): competitive with or beats HyPer v0.5 and hand-optimized C++. Q6/Q12 wins from predication/vectorization where HyPer's auto-vectorizer fails; Q1/Q3 wins from lightweight hash tables + dynamic load balancing</td><td class="mono">§6.1, Figs. 2–3</td></tr>
+        <tr><td>PageRank (twitter_rv)</td><td>Competitive with C++, beats GraphMat — hedged: "likely due to" GraphMat's extra per-vertex bookkeeping unneeded for this PageRank variant</td><td class="mono">§6.1</td></tr>
+        <tr><td>Word2Vec</td><td>12× vs. stock TensorFlow; competitive with TensorFlow's own hand-written fused kernel ("TF-Op")</td><td class="mono">§6.1</td></tr>
+        <tr class="best"><td><b>TensorFlow logreg (MNIST)</b></td><td>32× on 1 core, 21× on 12 cores — 12-core version becomes memory-bound, which is why the multi-core speedup is <i>smaller</i></td><td class="mono">§6.2, Fig. 4</td></tr>
+        <tr><td>Spark SQL (21-node cluster, TPC-H SF800)</td><td>6.1× (Q1), 6.5× (Q6) — from generating native code instead of Spark SQL's usual Java codegen</td><td class="mono">§6.2</td></tr>
+        <tr><td>Pandas data cleaning</td><td>4.2× on 1 core, further 6.5× parallelized to 12 cores</td><td class="mono">§6.2</td></tr>
+        <tr><td>Spark SQL + Scala UDF</td><td>14× from vectorizing the UDF invocation across rows before summing, vs. treating the UDF as opaque</td><td class="mono">§6.3, Fig. 5</td></tr>
+        <tr class="best"><td><b>Pandas + NumPy workflow</b></td><td>31× on 1 core, further 8× on 12 cores → stated overall <b>250×</b> vs. original single-threaded Pandas baseline</td><td class="mono">§6.3</td></tr>
+        <tr><td>Integration effort</td><td>~500 lines of one-time glue per framework + 50–100 lines per ported operator (avg. 16–23 LoC/operator)</td><td class="mono">§6.4, Table 3</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout note"><span class="ic">⚖️</span><div><b>Caveats worth taking at face value:</b> the "a few graduate student days per framework" integration-effort claim is qualitative, not rigorously measured (§6.4). This is a CIDR paper — CIDR explicitly solicits early-stage, vision-oriented work — and the framework integrations add "sufficient support to run the operators required for a small test workload" (§6.2), not full framework coverage. The 250× headline is a product of stacked speedups (31× × 8×) on one specific workflow, not a general claim about all cross-library workloads.</div></div>
+  </div>
+</section>
+
+<!-- ============ TAB 7: PRACTICE ============ -->
+<section class="tab-panel" id="tab-practice">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Check your understanding</div>
+      <h2>Practice</h2>
+      <p class="sub">Try each before opening the answer.</p>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q1</span>
+      <div class="qtext">Why does fusing the <code>filter</code> and <code>reduce</code> in the Pandas/NumPy example speed things up, given that Pandas' and NumPy's own C++ internals are already fast?</div>
+      <details><summary>Show answer</summary><div class="ans">Because the win is eliminating a redundant pass over memory and an intermediate allocation (materializing the filtered array), not making either individual operation compute faster. Data movement, not compute, is the bottleneck being targeted (§1, Listings 5–8).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q2</span>
+      <div class="qtext">Why can't Weld just expose <code>map</code>/<code>filter</code>/<code>reduce</code> directly as IR primitives instead of the lower-level <code>for</code>+builders?</div>
+      <details><summary>Show answer</summary><div class="ans">Because once two operators are compiled as separate opaque primitives, there's no way to fuse their loop bodies together after the fact (no <code>mapAndReduce</code> primitive exists, and you can't enumerate one for every operator pair). Exposing only the lower-level loop+builder construct lets <code>map</code> and <code>reduce</code> be sugar that both compile to the same primitive, so a single loop can merge into multiple builders at once (§4.4).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q3</span>
+      <div class="qtext">What does it mean, precisely, for builders to be "linear types," and why does that matter operationally?</div>
+      <details><summary>Show answer</summary><div class="ans">A builder value must be consumed exactly once along every control path — no aliasing, no reuse. This licenses the backend to implement <code>merge</code>, which the IR presents as returning a "new" builder, as in-place mutation of memory underneath, without any risk of two live references seeing inconsistent state (§4.2, footnote 2).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q4</span>
+      <div class="qtext">Why did the authors reject reusing plain LLVM IR as Weld's IR?</div>
+      <details><summary>Show answer</summary><div class="ans">LLVM IR is not explicitly parallel — the backend would need to infer which loops/operations are safe to parallelize via dependence analysis over ordinary loads and stores. Weld instead makes <code>for</code>+builders the <i>only</i> way to express parallel work, so safety is guaranteed by the IR's grammar rather than proven by analysis (§4).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q5</span>
+      <div class="qtext">The paper reports TensorFlow logistic regression speedups of 32× on 1 core but only 21× on 12 cores. Why would adding cores shrink the relative speedup?</div>
+      <details><summary>Show answer</summary><div class="ans">Because the Weld version, once sped up, becomes memory-bound rather than compute-bound — more cores can't help once the bottleneck is memory bandwidth rather than available arithmetic throughput (§6.2, Fig. 4a).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q6</span>
+      <div class="qtext">What kind of parallel algorithm can Weld's current IR <i>not</i> express, and why?</div>
+      <details><summary>Show answer</summary><div class="ans">Deliberately racy/asynchronous algorithms like Hogwild! SGD, where threads race to update shared state without synchronization. Weld's <code>for</code>+builders execution model is fully deterministic — merges are associative and reorderable, but the final result never depends on thread interleaving — which structurally excludes intentionally nondeterministic algorithms (§4.3).</div></details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 8: REFERENCE ============ -->
+<section class="tab-panel" id="tab-reference">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Look it up</div>
+      <h2>Glossary, limitations &amp; further reading</h2>
+    </div>
+
+    <div class="subhead">Core terms</div>
+    <div class="gloss">
+      <div class="term-def"><b>Data-intensive workload</b><span>Computation doing little arithmetic per byte of input, so runtime is dominated by memory bandwidth rather than CPU throughput (§1).</span></div>
+      <div class="term-def"><b>Materialization</b><span>Fully computing and storing a complete intermediate result before consuming it, as opposed to producing values on demand.</span></div>
+      <div class="term-def"><b>Narrow waist</b><span>A small, stable IR that many libraries compile into and one backend compiles out of — the paper's core design metaphor (§2, §3).</span></div>
+      <div class="term-def"><b>Builder</b><span>Weld's declarative, write-only, build-once accumulator abstraction (<code>vecbuilder</code>, <code>merger</code>, <code>dictmerger</code>, <code>vecmerger</code>, <code>groupbuilder</code>).</span></div>
+      <div class="term-def"><b>Linear type</b><span>A type whose values must be used exactly once along every execution path; justifies implementing an immutable-looking interface (builders) via mutable memory underneath.</span></div>
+      <div class="term-def"><b>Loop fusion</b><span>Merging multiple separate passes over the same data into a single pass — Weld's central data-movement optimization.</span></div>
+      <div class="term-def"><b>Lazy evaluation</b><span>Library calls build an IR expression instead of computing immediately; execution is deferred until a concrete result is required (§5).</span></div>
+      <div class="term-def"><b>Whole-stage code generation</b><span>Compiling an entire query/computation into one tight native loop rather than executing it via per-operator dispatch (the HyPer approach referenced throughout).</span></div>
+    </div>
+
+    <div class="subhead">Supporting terms</div>
+    <div class="gloss">
+      <div class="term-def"><b>Intermediate representation (IR)</b><span>The internal language a compiler (or, here, a runtime) uses to represent a program between user-facing source and generated machine code.</span></div>
+      <div class="term-def"><b>SSA (Static Single Assignment)</b><span>An IR discipline where each variable is assigned exactly once, simplifying data-flow analysis.</span></div>
+      <div class="term-def"><b>Monad comprehension</b><span>A generalization of list-comprehension syntax to arbitrary monads; cited as the closest prior IR design to Weld's.</span></div>
+      <div class="term-def"><b>Loop tiling</b><span>Restructuring loop iteration order/blocking to improve cache locality — an optimization the IR is designed to support (Wolfe 1989).</span></div>
+      <div class="term-def"><b>Predication</b><span>Replacing a data-dependent branch with a branchless conditional assignment, enabling vectorization of code that would otherwise have unpredictable branches.</span></div>
+      <div class="term-def"><b>Vectorization (SIMD, AVX2)</b><span>Performing the same operation on multiple data elements with a single CPU instruction.</span></div>
+      <div class="term-def"><b>UDF (User-Defined Function)</b><span>User-supplied code invoked from within a query engine (e.g. a Scala function called from Spark SQL).</span></div>
+      <div class="term-def"><b>BLAS</b><span>Basic Linear Algebra Subprograms — standard optimized numerical kernels used internally by NumPy and TensorFlow.</span></div>
+    </div>
+
+    <div class="subhead">Limitations &amp; open questions</div>
+    <div class="callout note"><span class="ic">📌</span><div><b>Stated by the authors:</b> no racy/asynchronous parallelism — the IR's determinism rules out algorithms like Hogwild! SGD by construction (§4.3), with "a future version of the IR" as the stated remedy. No cost-based optimizer yet — the prototype implements loop fusion, tiling, common subexpression elimination, and vectorization, but <i>deciding when and how</i> to apply them is explicitly future work (§8 poses "how should we design a program optimizer for Weld?" as open, noting Weld has fewer runtime statistics available by default than a database). Also flagged: richer data-access methods (Parquet, Protocol Buffers), multi-query optimization, and heterogeneous hardware backends (GPUs, FPGAs) beyond the current LLVM/CPU backend.</div></div>
+    <div class="callout note"><span class="ic">🔍</span><div><b>Other open tensions:</b> no explicit data placement / NUMA awareness in the current IR (§8) — fusion incidentally reduces data movement, but there's no first-class placement control. The paper's own principle 2 (§2) deliberately excludes domain-specific optimizations, but §8 immediately asks whether e.g. adding linear-algebra types would justify the added IR complexity — an acknowledged unresolved tension. The relational-algebra comparison is somewhat asserted rather than proven: footnote 1 concedes relational algebra, via joins and foreign keys, actually <i>can</i> express arbitrary nested relationships — the real claim is that programs built that way become hard to analyze, a softer claim than "cannot express nesting." A later, more complete paper (Palkar et al., PVLDB 2018) builds an actual adaptive, cost-aware optimizer for Weld, directly addressing the open question this paper leaves.</div></div>
+
+    <div class="subhead">Related papers</div>
+    <div class="read-item reveal"><h4>Efficiently Compiling Efficient Query Plans for Modern Hardware <span class="diff hard">hard</span></h4><div class="meta">Neumann · VLDB · 2011</div><p>The HyPer whole-stage-codegen work this paper repeatedly compares against.</p></div>
+    <div class="read-item reveal"><h4>Monad Comprehensions: A Versatile Representation for Queries <span class="diff hard">hard</span></h4><div class="meta">Grust · The Functional Approach to Data Management, Springer · 2004</div><p>The closest prior IR design to Weld's, per the paper's own comparison (§4, §7).</p></div>
+    <div class="read-item reveal"><h4>Substructural Type Systems <span class="diff hard">hard</span></h4><div class="meta">Walker, in Advanced Topics in Types and Programming Languages (ed. Pierce) · MIT Press · 2005</div><p>The formal background for the linear-type treatment of builders.</p></div>
+    <div class="read-item reveal"><h4>Have Abstraction and Eat Performance, Too <span class="diff med">medium</span></h4><div class="meta">Brown, Lee, Rompf, Sujeeth, De Sa, Aberger, Olukotun · CGO · 2016</div><p>Delite's multiloop construct, cited as the other closest related IR design (§7).</p></div>
+    <div class="read-item reveal"><h4>Voodoo — a Vector Algebra for Portable Database Performance on Modern Hardware <span class="diff med">medium</span></h4><div class="meta">Pirk, Moll, Zaharia, Madden · VLDB · 2016</div><p>Related runtime-codegen work with overlapping authorship.</p></div>
+    <div class="read-item reveal"><h4>Hogwild!: A Lock-Free Approach to Parallelizing SGD <span class="diff med">medium</span></h4><div class="meta">Recht, Re, Wright, Niu · NeurIPS (as NIPS) · 2011</div><p>The algorithm the paper cites as currently inexpressible in Weld's deterministic IR.</p></div>
+    <div class="read-item reveal"><h4>Evaluating End-to-End Optimization for Data Analytics Applications in Weld <span class="diff hard">hard</span></h4><div class="meta">Palkar, Thomas, Narayanan, et al. · PVLDB 11(9) · 2018</div><p>The direct follow-up that builds the adaptive, cost-aware optimizer this CIDR paper explicitly leaves as future work.</p></div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span><b>Paper:</b> Palkar, Thomas, Shanbhag, Narayanan, Pirk, Schwarzkopf, Amarasinghe, Zaharia — "Weld: A Common Runtime for High Performance Data Analytics" (CIDR 2017)</span>
+    <span><b>Source:</b> <a href="https://people.eecs.berkeley.edu/~matei/papers/2017/cidr_weld.pdf">people.eecs.berkeley.edu/~matei/papers/2017/cidr_weld.pdf</a></span>
+    <span><b>Format:</b> Interactive field guide · numbers verified against the source</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- TABS ---- */
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+  var panels = {};
+  document.querySelectorAll('.tab-panel').forEach(function(p){ panels[p.id.replace('tab-','')] = p; });
+  function activate(name){
+    btns.forEach(function(b){ b.classList.toggle('active', b.dataset.tab === name); });
+    Object.keys(panels).forEach(function(k){ panels[k].classList.toggle('active', k === name); });
+    requestAnimationFrame(function(){ runReveals(); maybeAnimateBars(); });
+    window.scrollTo({top:0, behavior: reduce ? 'auto' : 'smooth'});
+    if(history.replaceState) history.replaceState(null,'','#'+name);
+  }
+  btns.forEach(function(b){ b.addEventListener('click', function(){ activate(b.dataset.tab); }); });
+  var initial = (location.hash||'').replace('#','');
+  if(initial && panels[initial]) activate(initial);
+
+  /* ---- SCROLL REVEAL ---- */
+  var io = ('IntersectionObserver' in window) ? new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, {threshold:0.12, rootMargin:'0px 0px -40px 0px'}) : null;
+  function runReveals(){
+    document.querySelectorAll('.tab-panel.active .reveal:not(.in)').forEach(function(el){
+      if(reduce || !io){ el.classList.add('in'); }
+      else { var r = el.getBoundingClientRect(); if(r.top < window.innerHeight) el.classList.add('in'); else io.observe(el); }
+    });
+  }
+
+  /* ---- HEADLINE BARS ---- */
+  var barsDone = false, MAXP = 32;
+  function maybeAnimateBars(){
+    var fig = document.getElementById('headlineBars');
+    if(!fig || barsDone || !fig.closest('.tab-panel').classList.contains('active')) return;
+    document.querySelectorAll('#headlineBars .bar-fill').forEach(function(f,i){
+      var w = Math.min(100,(parseFloat(f.dataset.w)/MAXP)*100);
+      setTimeout(function(){ f.style.width = w + '%'; }, reduce ? 0 : 110*i);
+    });
+    fig.classList.add('shown');
+    barsDone = true;
+  }
+
+  /* ---- MEMORY-PASS SIMULATOR ---- */
+  var eagerStrip = document.getElementById('eagerStrip'), fusedStrip = document.getElementById('fusedStrip');
+  function buildStrips(n){
+    if(!eagerStrip) return;
+    var eh = '', fh = '';
+    for(var i=0;i<n;i++){ eh += '<div class="pchunk eager">pass '+(i+1)+'</div>'; }
+    fh += '<div class="pchunk fused">1 fused pass</div>';
+    eagerStrip.innerHTML = eh;
+    fusedStrip.innerHTML = fh;
+  }
+  function updatePass(n){
+    var range = document.getElementById('passRange'); if(!range) return;
+    n = Math.max(1, Math.min(8, n));
+    range.value = n;
+    document.getElementById('passRangeVal').textContent = n;
+    buildStrips(n);
+    document.getElementById('eagerPasses').textContent = n;
+    document.getElementById('eagerAlloc').textContent = Math.max(0, n-1);
+    document.getElementById('fusedPasses').textContent = '1';
+    document.getElementById('fusedAlloc').textContent = '0';
+    var verd = document.getElementById('passVerdict');
+    if(n === 1){
+      verd.textContent = 'A single operation has nothing to fuse — Weld and eager execution do the same one pass.';
+    } else {
+      verd.textContent = '✓ Chaining '+n+' operations costs '+n+' full passes over memory today, plus '+(n-1)+' throwaway intermediate array'+(n-1===1?'':'s')+'. Weld fuses them into 1 pass and 0 intermediates — every avoided pass is memory traffic (and an allocation) that simply never happens.';
+    }
+  }
+  var passRange = document.getElementById('passRange');
+  if(passRange){
+    passRange.addEventListener('input', function(){ updatePass(parseInt(this.value,10)); });
+    document.querySelectorAll('[data-set]').forEach(function(b){ b.addEventListener('click', function(){ updatePass(parseInt(b.dataset.set,10)); }); });
+    updatePass(2);
+  }
+
+  /* ---- INIT ---- */
+  runReveals(); maybeAnimateBars();
+  window.addEventListener('scroll', runReveals, {passive:true});
+})();
+</script>
+<script src="../rate.js"></script>
+<footer class="legal-footer" style="max-width:900px;margin:44px auto 64px;padding:18px 22px;border-top:1px solid #E7DBC6;font-family:'Mulish',system-ui,sans-serif;font-size:.78rem;line-height:1.6;color:#9A8E7C"><b style="color:#6E6456">Personal study aid — not affiliated with the authors, institutions, or venues.</b> A non-commercial educational summary made for private study, commentary, and teaching. Any figures reproduced from the original paper remain the copyright of their respective authors/publishers and are shown under fair use (17 U.S.C. &sect;107) for commentary and education, each captioned with its source; all other diagrams and text are original, created by the site owner with AI assistance. No infringement is intended and no ownership is claimed over third-party material. Rights holders who wish a figure removed may <a href="https://github.com/katherinemohr/katherinemohr.github.io/issues" style="color:#5A61B4">open an issue</a> and it will be removed promptly.</footer>
+</body>
+</html>

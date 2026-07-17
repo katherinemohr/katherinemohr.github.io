@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<!-- Diffuse field guide — Composing Distributed Computations Through Task and Kernel Fusion
+     (Yadav, Sundram, Lee, Garland, Bauer, Aiken, Kjolstad, ASPLOS 2025).
+     Built in the "field guide" format, matching the PagedAttention / UCP / Weld guides.
+     Semantic colors: teal = fused/local (the win) · indigo = Diffuse's IR machinery · honey = the core rule/callout · terracotta = cross-processor dependence / what breaks. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fusing What Stays on One Processor — Diffuse, a Field Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Mulish:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ============ DESIGN TOKENS ============ */
+:root{
+  --paper:#FBF6EC; --paper-2:#F3EADA; --card:#FFFDF8;
+  --ink:#332C24; --ink-soft:#6E6456; --ink-faint:#9A8E7C;
+  --line:#E7DBC6; --line-strong:#D8C8AC;
+  --honey:#E8A33D; --honey-deep:#C27D14; --honey-soft:#FBEACB;
+  --accent-2:#2C8C7C; --accent-2-soft:#DCEFE9;      /* teal    = fused / local (the win)     */
+  --accent-3:#5A61B4; --accent-3-soft:#E6E6F6;      /* indigo  = Diffuse's IR machinery       */
+  --accent-4:#C0563B; --accent-4-soft:#F7E1D8;      /* terracotta = cross-processor dependence */
+  --shadow-sm:0 1px 2px rgba(80,60,30,.06), 0 2px 8px rgba(80,60,30,.05);
+  --shadow-md:0 4px 14px rgba(90,66,28,.10), 0 12px 30px rgba(90,66,28,.07);
+  --shadow-lg:0 10px 40px rgba(90,66,28,.14);
+  --radius:18px; --radius-sm:12px; --maxw:1080px;
+  --display:"Fraunces",Georgia,serif;
+  --body:"Mulish",-apple-system,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:var(--body);color:var(--ink);line-height:1.65;background:var(--paper);
+  background-image:
+    radial-gradient(circle at 12% 8%, rgba(44,140,124,.05), transparent 40%),
+    radial-gradient(circle at 88% 22%, rgba(90,97,180,.05), transparent 42%),
+    radial-gradient(circle at 50% 120%, rgba(232,163,61,.06), transparent 55%);
+  -webkit-font-smoothing:antialiased;}
+h1,h2,h3,h4{font-family:var(--display);font-weight:600;line-height:1.18;color:var(--ink);margin:0 0 .5em}
+p{margin:0 0 1em}
+a{color:var(--honey-deep);text-decoration:none;border-bottom:1.5px solid var(--honey-soft);transition:border-color .2s}
+a:hover{border-color:var(--honey)}
+strong{font-weight:700;color:#231d16}
+em{color:var(--ink-soft)}
+code{font-family:var(--mono);font-size:.92em;background:var(--paper-2);padding:1px 6px;border-radius:5px}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 22px}
+
+/* HERO */
+.hero{position:relative;overflow:hidden;padding:64px 0 52px;background:linear-gradient(180deg,#FFFBF2 0%,var(--paper) 100%);border-bottom:1px solid var(--line)}
+.hero::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:repeating-linear-gradient(0deg,transparent,transparent 31px,rgba(90,97,180,.05) 31px,rgba(90,97,180,.05) 32px);
+  -webkit-mask-image:linear-gradient(180deg,transparent,#000 30%,#000 60%,transparent);mask-image:linear-gradient(180deg,transparent,#000 30%,#000 60%,transparent);}
+.hero .wrap{position:relative}
+.eyebrow{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--honey-deep);background:var(--honey-soft);padding:7px 14px;border-radius:999px;border:1px solid #F0DCB0;margin-bottom:22px;}
+.eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--honey);box-shadow:0 0 0 4px rgba(232,163,61,.2)}
+.hero h1{font-size:clamp(2rem,5.2vw,3.4rem);font-weight:600;letter-spacing:-.015em;max-width:22ch;margin-bottom:.3em}
+.hero h1 .swash{font-style:italic;color:var(--accent-2);font-weight:500}
+.hero .lede{font-size:clamp(1.05rem,2.2vw,1.32rem);color:var(--ink-soft);max-width:52ch;margin-bottom:30px}
+.hero-meta{display:flex;flex-wrap:wrap;gap:10px;font-family:var(--mono);font-size:12.5px;color:var(--ink-soft)}
+.hero-meta span{background:var(--card);border:1px solid var(--line);padding:6px 12px;border-radius:999px}
+.rule-plaque{margin-top:34px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;background:var(--card);
+  border:1.5px solid var(--line-strong);border-radius:var(--radius);padding:22px 26px;box-shadow:var(--shadow-md);max-width:720px;position:relative;}
+.rule-plaque::after{content:"THE CORE RULE";position:absolute;top:-11px;left:24px;font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;
+  color:#fff;background:var(--accent-3);padding:3px 10px;border-radius:6px;}
+.rule-plaque .glyph{font-size:2.6rem}
+.rule-plaque p{margin:0;font-family:var(--display);font-size:1.1rem;line-height:1.4}
+.rule-plaque .ro{color:var(--accent-2);font-weight:600}
+.rule-plaque .wo{color:var(--accent-4);font-weight:600}
+
+/* TAB NAV */
+.tabbar-outer{position:sticky;top:0;z-index:50;background:rgba(251,246,236,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.tabbar{display:flex;gap:6px;overflow-x:auto;padding:11px 22px;max-width:var(--maxw);margin:0 auto;scrollbar-width:none}
+.tabbar::-webkit-scrollbar{display:none}
+.tab-btn{flex:0 0 auto;font-family:var(--body);font-weight:700;font-size:14px;color:var(--ink-soft);background:transparent;border:1.5px solid transparent;
+  border-radius:999px;padding:8px 16px;cursor:pointer;white-space:nowrap;transition:all .18s;display:flex;align-items:center;gap:7px;}
+.tab-btn .n{font-family:var(--mono);font-size:11px;opacity:.6}
+.tab-btn:hover{color:var(--ink);background:var(--paper-2)}
+.tab-btn.active{color:#fff;background:var(--ink);border-color:var(--ink)}
+.tab-btn.active .n{opacity:.7;color:var(--honey)}
+
+/* PANELS */
+.tab-panel{display:none;animation:fade .4s ease}
+.tab-panel.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.panel-head{padding:46px 0 8px}
+.panel-head .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--honey-deep);margin-bottom:12px}
+.panel-head h2{font-size:clamp(1.9rem,4vw,2.8rem);letter-spacing:-.01em;margin-bottom:.25em}
+.panel-head .sub{font-size:1.1rem;color:var(--ink-soft);max-width:62ch}
+
+/* PROSE / CARDS */
+.prose{max-width:74ch}
+.prose p{font-size:1.03rem}
+.prose h3{font-size:1.5rem;margin-top:30px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px 28px;box-shadow:var(--shadow-sm);margin:18px 0}
+.card h3{font-size:1.3rem;margin-bottom:.4em}
+.seq{counter-reset:seq;list-style:none;padding:0;margin:18px 0}
+.seq li{position:relative;padding:0 0 18px 52px;margin:0}
+.seq li::before{counter-increment:seq;content:counter(seq,decimal-leading-zero);position:absolute;left:0;top:-2px;font-family:var(--mono);
+  font-size:13px;font-weight:700;color:var(--honey-deep);background:var(--honey-soft);border:1px solid #EFD9AC;border-radius:8px;width:34px;height:30px;
+  display:flex;align-items:center;justify-content:center;}
+
+/* PRIMER ACCORDION */
+.primer-grid{display:grid;grid-template-columns:1fr;gap:12px;margin:26px 0}
+.primer{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;transition:box-shadow .2s,border-color .2s}
+.primer[open]{box-shadow:var(--shadow-md);border-color:var(--line-strong)}
+.primer summary{list-style:none;cursor:pointer;padding:16px 20px;display:flex;align-items:center;gap:14px;font-weight:700;font-size:1.04rem}
+.primer summary::-webkit-details-marker{display:none}
+.primer summary .pnum{flex:0 0 auto;width:30px;height:30px;border-radius:9px;background:var(--accent-3-soft);color:var(--accent-3);font-family:var(--mono);font-size:13px;
+  display:flex;align-items:center;justify-content:center;font-weight:700;}
+.primer summary .chev{margin-left:auto;color:var(--ink-faint);transition:transform .25s;flex:0 0 auto;font-family:var(--mono)}
+.primer[open] summary .chev{transform:rotate(180deg)}
+.primer .body{padding:2px 20px 20px 64px;color:var(--ink-soft);font-size:1rem}
+.primer .body p:last-child{margin-bottom:0}
+.primer .ready{margin-top:14px;padding:12px 16px;background:var(--accent-2-soft);border-left:3px solid var(--accent-2);border-radius:0 10px 10px 0;color:#1f5b51;font-size:.96rem}
+.primer .ready b{color:#16463e}
+
+/* ANALOGY CARDS */
+.analogy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px;margin:24px 0}
+.analogy{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:24px;position:relative;box-shadow:var(--shadow-sm);transition:transform .2s,box-shadow .2s;overflow:hidden}
+.analogy:hover{transform:translateY(-4px);box-shadow:var(--shadow-md)}
+.analogy .ill{width:100%;height:120px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;background:var(--paper-2);border-radius:12px;border:1px dashed var(--line-strong)}
+.analogy .ill svg{width:140px;height:96px}
+.analogy h3{font-size:1.22rem;margin-bottom:.3em}
+.analogy .term{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--honey-deep);display:block;margin-bottom:8px}
+.analogy p{font-size:.98rem;color:var(--ink-soft);margin-bottom:.8em}
+.analogy .breaks{font-size:.9rem;color:var(--ink-faint);border-top:1px dashed var(--line-strong);padding-top:10px;margin-top:4px}
+.analogy .breaks b{color:var(--accent-4)}
+
+/* color chips */
+.mem-chip{display:inline-block;font-family:var(--mono);font-size:.82em;font-weight:700;padding:1px 8px;border-radius:6px;vertical-align:baseline}
+.chip-local{background:var(--accent-2-soft);color:#1f5b51}
+.chip-rule{background:var(--honey-soft);color:#6e4a09}
+.chip-diffuse{background:var(--accent-3-soft);color:#3a409a}
+.chip-cross{background:var(--accent-4-soft);color:#9a3a22}
+
+/* CALLOUTS */
+.callout{border-radius:var(--radius-sm);padding:16px 20px;margin:18px 0;font-size:1rem;display:flex;gap:14px;align-items:flex-start}
+.callout .ic{flex:0 0 auto;font-size:1.15rem;line-height:1.3;font-weight:700}
+.callout.takeaway{background:var(--honey-soft);border:1px solid #EFD9AC;color:#6e4a09}
+.callout.why{background:var(--accent-2-soft);border:1px solid #B9E0D6;color:#1f5b51}
+.callout.note{background:var(--paper-2);border:1px solid var(--line-strong);color:var(--ink-soft)}
+.callout.warn{background:var(--accent-4-soft);border:1px solid #e3b4a5;color:#9a3a22}
+.callout b{color:inherit}
+
+/* FIGURE */
+figure.viz{margin:30px 0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow-md)}
+figure.viz figcaption{margin-top:18px;font-size:.94rem;color:var(--ink-soft);border-top:1px dashed var(--line-strong);padding-top:14px}
+.viz-title{font-family:var(--display);font-size:1.25rem;font-weight:600;margin-bottom:4px}
+.viz-kicker{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:18px}
+.legend{display:flex;flex-wrap:wrap;gap:16px;margin:14px 0 22px;font-size:.9rem;font-weight:600}
+.legend span{display:inline-flex;align-items:center;gap:7px;color:var(--ink-soft)}
+.legend i{width:14px;height:14px;border-radius:4px;display:inline-block}
+figure.viz svg.full{width:100%;height:auto;display:block}
+
+/* FLOW DIAGRAM */
+.flow-row{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;justify-content:center}
+.node{background:#fff;border:1.5px solid var(--line-strong);border-radius:14px;padding:14px 16px;min-width:150px;max-width:240px;box-shadow:var(--shadow-sm);position:relative}
+.node .nt{font-weight:700;font-size:.98rem;margin-bottom:4px}
+.node .nd{font-size:.85rem;color:var(--ink-soft);line-height:1.45}
+.node.n-local{border-color:#9fd2c7;background:var(--accent-2-soft)}
+.node.n-diffuse{border-color:#bcbfe8;background:var(--accent-3-soft)}
+.node.n-cross{border-color:#e3b4a5;background:var(--accent-4-soft)}
+.node.n-rule{border-color:var(--honey);background:var(--honey-soft)}
+.flow-arrow{align-self:center;color:var(--ink-faint);font-size:1.4rem;display:flex;align-items:center;font-family:var(--mono)}
+
+/* TABLE */
+.tbl{width:100%;border-collapse:collapse;margin:18px 0;font-size:.92rem}
+.tbl th,.tbl td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line)}
+.tbl th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);font-weight:700}
+.tbl td.mono{font-family:var(--mono);font-size:.86rem}
+.tbl tr:hover td{background:var(--paper-2)}
+.tbl .best td{background:var(--accent-3-soft)}
+.tbl .best:hover td{background:#dcdef3}
+
+/* BAR CHART */
+.bars{margin:8px 0}
+.bar-row{display:grid;grid-template-columns:170px 1fr;gap:14px;align-items:center;margin:14px 0}
+.bar-label{text-align:right;font-weight:700;font-size:.92rem}
+.bar-label small{display:block;font-family:var(--mono);font-weight:500;font-size:10.5px;color:var(--ink-faint)}
+.bar-track{position:relative;height:38px;background:var(--paper-2);border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.bar-fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:10px;transition:width .5s cubic-bezier(.16,1,.3,1);display:flex;align-items:center;justify-content:flex-end;padding-right:10px}
+.bar-fill span{font-family:var(--mono);font-size:12px;font-weight:700;color:#fff;white-space:nowrap;opacity:0;transition:opacity .4s .2s}
+.bars.shown .bar-fill span{opacity:1}
+.bf-diffuse{background:linear-gradient(90deg,#6f76c9,#5A61B4)}
+.bf-local{background:linear-gradient(90deg,#3aa392,#2C8C7C)}
+.bf-cross{background:linear-gradient(90deg,#cf6f56,#C0563B)}
+
+/* FUSIBILITY CHECKER (interactive) */
+.fuse-viz{display:grid;grid-template-columns:1fr;gap:10px}
+.fuse-row{display:flex;gap:8px;margin:4px 0}
+.fuse-row .rowlab{flex:0 0 76px;font-family:var(--mono);font-size:11px;color:var(--ink-faint);display:flex;align-items:center}
+.fuse-cell{flex:1;min-height:56px;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  font-family:var(--mono);font-size:11px;font-weight:700;border:1.5px solid var(--line-strong);background:#fff;color:var(--ink-soft);transition:.15s}
+.fuse-cell.t1{background:var(--accent-3-soft);border-color:#bcbfe8;color:#3a409a}
+.fuse-cell.ok{background:var(--accent-2-soft);border-color:#9fd2c7;color:#1f5b51}
+.fuse-cell.bad{background:var(--accent-4-soft);border-color:#e3b4a5;color:#9a3a22}
+.fuse-cell .sub{font-weight:500;font-size:9.5px;opacity:.85}
+.fuse-controls{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:14px 0 6px}
+.pverdict{font-weight:700;font-size:1rem;padding:12px 16px;border-radius:10px;margin-top:12px;transition:.2s}
+.pverdict.opt{background:var(--accent-2-soft);color:#16463e;border:1px solid #9fd2c7}
+.pverdict.sub{background:var(--paper-2);color:var(--ink-soft);border:1px solid var(--line-strong)}
+.pverdict.bad{background:var(--accent-4-soft);color:#7a2c1a;border:1px solid #e3b4a5}
+.preset-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.tbtn{font-family:var(--body);font-weight:700;font-size:.85rem;border:1.5px solid var(--line-strong);background:#fff;border-radius:10px;padding:8px 12px;cursor:pointer;transition:all .15s}
+.tbtn:hover{border-color:var(--accent-3);color:var(--accent-3)}
+.tbtn.on{background:var(--accent-3);border-color:var(--accent-3);color:#fff}
+.pstat{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-family:var(--mono);font-size:.85rem;min-width:150px}
+.pstat b{display:block;font-size:1.1rem;color:var(--ink);font-family:var(--display)}
+.pass-readout{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+
+/* FAQ-style practice */
+.prob{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:20px 22px;margin:14px 0;box-shadow:var(--shadow-sm)}
+.prob .ptag{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:6px;margin-bottom:10px;font-weight:700;background:var(--accent-3-soft);color:#3a409a}
+.prob .qtext{font-weight:600;margin-bottom:8px}
+.prob details{margin-top:6px}
+.prob summary{cursor:pointer;color:var(--honey-deep);font-weight:700;font-size:.92rem;list-style:none}
+.prob summary::-webkit-details-marker{display:none}
+.prob summary::before{content:"▸ ";font-family:var(--mono)}
+.prob details[open] summary::before{content:"▾ "}
+.prob .ans{margin-top:10px;padding:14px 16px;background:var(--paper-2);border-radius:10px;font-size:.96rem;color:var(--ink-soft)}
+
+/* CODE */
+pre.sketch{background:#2c2620;color:#f3ead9;border-radius:14px;padding:20px 22px;overflow-x:auto;font-family:var(--mono);font-size:.86rem;line-height:1.7;margin:12px 0;box-shadow:var(--shadow-md)}
+pre.sketch .kw{color:#e8a33d} pre.sketch .cm{color:#8a9a7c;font-style:italic} pre.sketch .hl{color:#7e8ad6}
+
+/* GLOSSARY */
+.gloss{columns:2;column-gap:26px}
+.gloss .term-def{break-inside:avoid;margin:0 0 14px;font-size:.95rem}
+.gloss .term-def b{display:block;color:var(--ink);font-family:var(--display);font-size:1rem}
+.gloss .term-def span{color:var(--ink-soft)}
+.subhead{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--honey-deep);margin:28px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.read-item{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:18px 20px;margin:12px 0}
+.read-item h4{font-size:1.05rem;margin-bottom:6px}
+.read-item .meta{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-bottom:8px}
+.read-item p{font-size:.94rem;color:var(--ink-soft);margin:0}
+.diff{display:inline-block;font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:5px;font-weight:700;margin-left:6px}
+.diff.easy{background:var(--accent-2-soft);color:#1f5b51}
+.diff.med{background:var(--honey-soft);color:#6e4a09}
+.diff.hard{background:var(--accent-4-soft);color:#9a3a22}
+
+.foot{margin-top:60px;border-top:1px solid var(--line);background:var(--paper-2)}
+.foot .wrap{padding:30px 22px;font-size:.9rem;color:var(--ink-soft);display:flex;flex-wrap:wrap;gap:8px 28px}
+.foot b{color:var(--ink)}
+
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .6s,transform .6s}
+.reveal.in{opacity:1;transform:none}
+@media(max-width:820px){.pass-readout{flex-direction:column}.gloss{columns:1}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}.reveal{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow"><span class="dot"></span>ASPLOS 2025 · A Field Guide</span>
+    <h1>Fusing what stays <span class="swash">on one processor</span>, not what secretly needs <span class="swash" style="color:var(--accent-4)">a network hop</span></h1>
+    <p class="lede">Distributed array libraries turn <code>a + b</code> into a stream of parallel tasks handed to a runtime like Legion. <strong>Diffuse</strong> rewrites that stream before Legion ever sees it — fusing tasks into one pass over memory, but only when a cheap, provably sound check confirms no processor needs data from its neighbor.</p>
+    <div class="hero-meta">
+      <span>📄 Yadav, Sundram, et al. · "Diffuse" · ASPLOS 2025</span>
+      <span>🎓 PL background assumed (IRs, dataflow analysis, alpha-equivalence) — primers cover the systems side</span>
+      <span>⏱ ~35 min read</span>
+    </div>
+    <div class="rule-plaque">
+      <div class="glyph">🧩</div>
+      <p><span class="ro">Fusible</span> iff every processor's work depends on <span class="ro">only its own</span> prior work — never a <span class="wo">neighbor's</span>.<br><em style="font-size:.9rem">Checked in constant time, regardless of GPU count — that's what "scale-free" buys you.</em></p>
+    </div>
+  </div>
+</header>
+
+<!-- ============ TAB NAV ============ -->
+<nav class="tabbar-outer">
+  <div class="tabbar" role="tablist">
+    <button class="tab-btn active" data-tab="start"><span class="n">01</span>Start Here</button>
+    <button class="tab-btn" data-tab="idea"><span class="n">02</span>The Big Idea</button>
+    <button class="tab-btn" data-tab="analogies"><span class="n">03</span>Analogies</button>
+    <button class="tab-btn" data-tab="how"><span class="n">04</span>How It Works</button>
+    <button class="tab-btn" data-tab="example"><span class="n">05</span>Worked Example</button>
+    <button class="tab-btn" data-tab="results"><span class="n">06</span>Key Results</button>
+    <button class="tab-btn" data-tab="practice"><span class="n">07</span>Practice</button>
+    <button class="tab-btn" data-tab="reference"><span class="n">08</span>Reference</button>
+  </div>
+</nav>
+
+<main>
+
+<!-- ============ TAB 1: START HERE ============ -->
+<section class="tab-panel active" id="tab-start">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Before you begin</div>
+      <h2>The systems background this paper assumes</h2>
+      <p class="sub">This paper leans on PL machinery (IRs, dependence analysis, alpha-equivalence) more than most systems papers, and explains the systems side more. These three cards cover the systems side. Collapsed by default; open whatever's unfamiliar.</p>
+    </div>
+
+    <div class="primer-grid">
+      <details class="primer" open>
+        <summary><span class="pnum">1</span>Distributed task-based runtime systems<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>"Scale-out" array-processing systems — the paper's running examples are <b>cuPyNumeric</b> (a distributed drop-in replacement for NumPy) and <b>Legate Sparse</b> — don't hand-parallelize your code. Instead, the library translates each high-level call (<code>a + b</code>, <code>np.linalg.norm</code>) into one or more <b>tasks</b> — units of work over a slice of data — and hands a stream of tasks to a runtime system, here <b>Legion</b> (Bauer et al. 2012). The runtime decides which tasks can run in parallel, on which nodes, and inserts whatever communication is required because two tasks touch overlapping data.</p>
+          <p>This is the systems analogue of a PL "runtime managing effects": library authors write sequential-looking task bodies, and the runtime is responsible for cross-node consistency, the way a language runtime handles memory management so the programmer doesn't have to. Independently-developed libraries can be composed freely because the runtime — not each library — owns correctness.</p>
+          <div class="ready"><b>Now you're ready:</b> keep Legion and Diffuse apart in your head. Legion actually executes tasks and computes fine-grained dependencies at scale. Diffuse sits <i>above</i> Legion — it intercepts the task stream first, rewrites it (fusing tasks), and only then hands the optimized stream down. Diffuse never replaces Legion's own dependence tracking; it just shrinks what Legion has to deal with (Section 1).</div>
+        </div>
+      </details>
+      <details class="primer">
+        <summary><span class="pnum">2</span>Weak scaling and GPUs<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>The paper's benchmarks run on a cluster of nodes with 8 GPUs each (Section 7). A <b>weak-scaling</b> experiment grows the problem size in proportion to the machine size, so the amount of work <i>per processor</i> stays fixed — the reported metric is throughput per processor, and the ideal outcome is a flat line as you add machines. This differs from <b>strong scaling</b> (fixed total problem size, more processors = faster).</p>
+          <div class="ready"><b>Now you're ready:</b> a benchmark can look excellent on 1 GPU but disappointing at 128 GPUs simply because there's less fusable work per GPU once the data is chopped finer — this happens for the CFD benchmark in Key Results.</div>
+        </div>
+      </details>
+      <details class="primer">
+        <summary><span class="pnum">3</span>MLIR and dialects<span class="chev">▾</span></summary>
+        <div class="body">
+          <p>MLIR (Multi-Level IR) is LLVM-based compiler infrastructure. The one thing to know: MLIR lets a single program mix multiple <b>dialects</b> — sub-languages with their own typed operations (e.g. <code>memref</code> for array-like memory, <code>affine</code> for loop nests amenable to polyhedral analysis, <code>arith</code> for scalar arithmetic) — that a shared set of compiler passes can rewrite and lower together.</p>
+          <div class="ready"><b>Now you're ready:</b> Diffuse leans on this to represent a task's body once as MLIR and let generic loop-fusion/parallelization passes operate on it, instead of writing its own compiler backend from scratch (Section 6).</div>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 2: THE BIG IDEA ============ -->
+<section class="tab-panel" id="tab-idea">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">The whole story in one place</div>
+      <h2>Diffuse in a nutshell</h2>
+      <p class="sub">The problem, the fix, and the result.</p>
+    </div>
+    <div class="prose">
+      <p>Diffuse automatically fuses operations in distributed, GPU-accelerated Python programs (built on libraries like a distributed NumPy) — without the programmer changing any code. "Fusing" means merging several separate parallel operations into one, so intermediate arrays are never materialized and data is read from memory once instead of many times.</p>
+      <p>The central technical problem: fusion is easy to get right on a single machine but easy to get <b>wrong</b> for a cluster. Fusing two operations that secretly require communication between nodes produces a wrong (or deadlocking) program. Diffuse's contribution is (1) a compact intermediate representation of distributed computation whose size doesn't grow with the number of machines (<b>scale-free</b>), and (2) a fusion analysis over that IR that can be checked cheaply, is <b>provably sound</b>, and composes with an MLIR-based compiler that does the low-level kernel merging (§3–6).</p>
+      <p><strong>The payoff:</strong> Diffuse speeds up seven unmodified distributed applications by <b>1.86×</b> on average (geometric mean) across up to 128 GPUs, matches or exceeds PETSc (MPI+C) by <b>1.4×</b>, and even beats hand-optimized code by <b>1.23×</b> on average — by finding fusion opportunities a human missed (Abstract, §1).</p>
+    </div>
+
+    <div class="card" style="background:var(--honey-soft);border-color:#EFD9AC">
+      <h3 style="color:#6e4a09">🍯 Key takeaways</h3>
+      <ul style="margin:0;padding-left:20px;color:#6e4a09">
+        <li>Fusing across a cluster is only safe when <b>no processor needs another processor's data</b> — that's the entire correctness question this paper formalizes.</li>
+        <li>Diffuse's IR is <b>scale-free</b>: a symbolic representation whose size never grows with GPU count, so the fusion check stays cheap at any scale.</li>
+        <li><b>Fusibility (Definition 3):</b> a dependence map that's at most the identity — every processor depends only on itself.</li>
+        <li>Checking that directly is as expensive as the thing being avoided, so Diffuse uses four <b>sound-but-incomplete</b> syntactic constraints instead, each checkable in constant time.</li>
+        <li>Task fusion alone barely helps; the real win comes from <b>MLIR kernel fusion</b>, which merges loop bodies and deletes now-local intermediate buffers.</li>
+        <li>Result: <b>1.86×</b> geomean over unmodified code, <b>1.4×</b> over PETSc, <b>1.23×</b> over hand-optimized code — up to 10.7× on the best case.</li>
+      </ul>
+    </div>
+
+    <!-- SIGNATURE FIGURE -->
+    <figure class="viz reveal">
+      <div class="viz-title">The whole paper in one picture</div>
+      <div class="viz-kicker">geometric-mean speedups reported across benchmarks (§7)</div>
+      <div class="legend">
+        <span><i style="background:var(--accent-2)"></i> vs. unmodified / hand-written baseline</span>
+        <span><i style="background:var(--accent-3)"></i> vs. PETSc</span>
+      </div>
+      <div class="bars" id="headlineBars">
+        <div class="bar-row"><div class="bar-label">Black-Scholes<small>128 GPUs, best case</small></div><div class="bar-track"><div class="bar-fill bf-local" data-w="10.7"><span>10.7×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">CFD<small>1 GPU</small></div><div class="bar-track"><div class="bar-fill bf-local" data-w="2.3"><span>up to 2.3×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">TorchSWE<small>vs. unfused</small></div><div class="bar-track"><div class="bar-fill bf-local" data-w="1.61"><span>1.61×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">BiCGSTAB<small>vs. PETSc</small></div><div class="bar-track"><div class="bar-fill bf-diffuse" data-w="1.15"><span>1.15×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">Overall<small>geomean vs. unmodified</small></div><div class="bar-track"><div class="bar-fill bf-local" data-w="1.86"><span>1.86×</span></div></div></div>
+        <div class="bar-row"><div class="bar-label">Overall<small>geomean vs. hand-optimized</small></div><div class="bar-track"><div class="bar-fill bf-diffuse" data-w="1.23"><span>1.23×</span></div></div></div>
+      </div>
+      <figcaption><b>Read the last row carefully:</b> Diffuse doesn't just match code humans already tuned by hand — it beats it, on average, by finding fusion opportunities the domain experts missed. Bars are on a shared scale capped near Black-Scholes' 10.7×, so smaller wins are still visible. (Paper, §7, Figs. 10–12)</figcaption>
+    </figure>
+
+    <!-- CONCEPT MAP -->
+    <figure class="viz reveal">
+      <div class="viz-title">How the pieces connect</div>
+      <div class="viz-kicker">task stream → scale-free IR → fusibility check → kernel fusion → speedup</div>
+      <div class="flow-row">
+        <div class="node n-cross"><div class="nt">Problem</div><div class="nd">Fusing across nodes without checking communication needs risks wrong or deadlocking programs</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node n-diffuse"><div class="nt">Scale-free IR</div><div class="nd">Stores, partitions, index tasks — sized independent of GPU count</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node n-rule"><div class="nt">Fusibility check</div><div class="nd">4 sound-but-incomplete syntactic constraints, checked in constant time</div></div>
+      </div>
+      <div style="text-align:center;margin:12px 0;color:var(--ink-faint);font-family:var(--mono);font-size:1.3rem">↓</div>
+      <div class="flow-row">
+        <div class="node n-local"><div class="nt">Temp elimination</div><div class="nd">Demote provably-local stores to on-the-fly buffers</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node n-diffuse"><div class="nt">MLIR kernel fusion</div><div class="nd">Splice task bodies, run polyhedral loop fusion, lower to GPU/OpenMP</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="node n-local"><div class="nt">Result</div><div class="nd">1.86× geomean, up to 10.7× best case</div></div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ TAB 3: ANALOGIES ============ -->
+<section class="tab-panel" id="tab-analogies">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Six everyday pictures</div>
+      <h2>How to think about Diffuse's design</h2>
+      <p class="sub">Each picture stands alone — read them in any order. Every card ends with an honest note about where the picture stops being true.</p>
+    </div>
+    <div class="analogy-grid">
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="14" y="18" width="34" height="26" rx="4" fill="#E6E6F6" stroke="#5A61B4" stroke-width="2"/>
+          <text x="31" y="35" text-anchor="middle" font-family="monospace" font-size="8" fill="#3a409a">stream</text>
+          <path d="M48 31 h20" stroke="#9A8E7C" stroke-width="2"/>
+          <path d="M48 31 l8 -5 M48 31 l8 5" stroke="#9A8E7C" stroke-width="2"/>
+          <rect x="70" y="18" width="34" height="26" rx="4" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <text x="87" y="35" text-anchor="middle" font-family="monospace" font-size="8" fill="#1f5b51">Diffuse</text>
+          <path d="M104 31 h20" stroke="#9A8E7C" stroke-width="2"/>
+          <path d="M104 31 l8 -5 M104 31 l8 5" stroke="#9A8E7C" stroke-width="2"/>
+          <rect x="42" y="58" width="56" height="26" rx="4" fill="#FBEACB" stroke="#C27D14" stroke-width="2"/>
+          <text x="70" y="75" text-anchor="middle" font-family="monospace" font-size="8" fill="#6e4a09">Legion (executes)</text>
+        </svg></div>
+        <span class="term">The system boundary · An editor before the printer</span>
+        <h3>An editor who reorganizes chapters before the printer sees them</h3>
+        <p>An editor can merge, reorder, or cut chapters before a manuscript ever reaches the printing press — the press itself doesn't need to know editing happened, it just prints what it's handed. Diffuse plays the editor: it intercepts the task stream <i>before</i> Legion (the printer — the runtime that actually executes tasks and computes fine-grained dependencies) ever sees it, rewrites it by fusing tasks, and only then hands the optimized stream down (§1).</p>
+        <div class="breaks"><b>Where it's precise:</b> Diffuse never replaces or reimplements Legion's own dependence tracking. It only shrinks what Legion has to deal with, using its own cheaper, coarser (scale-free) analysis (§4.4).</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="20" y="20" width="100" height="50" rx="6" fill="#fff" stroke="#5A61B4" stroke-width="2"/>
+          <line x1="20" y1="40" x2="120" y2="40" stroke="#D8C8AC" stroke-dasharray="3 2"/>
+          <text x="70" y="33" text-anchor="middle" font-family="monospace" font-size="8" fill="#3a409a">1 blueprint</text>
+          <circle cx="38" cy="55" r="6" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="1.6"/>
+          <circle cx="58" cy="55" r="6" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="1.6"/>
+          <circle cx="78" cy="55" r="6" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="1.6"/>
+          <circle cx="98" cy="55" r="6" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="1.6"/>
+          <text x="70" y="62" text-anchor="middle" font-family="monospace" font-size="7" fill="#1f5b51">... N copies, same blueprint size</text>
+        </svg></div>
+        <span class="term">The IR · Scale-free</span>
+        <h3>A blueprint that doesn't grow when you build more copies</h3>
+        <p>A building's blueprint has a fixed size whether you construct one copy or a thousand — it describes the <i>shape</i> of the building, not each instance. Diffuse's IR does the same for parallel tasks: a <b>partition</b> is a symbolic function from processor index to sub-store, not an explicit table of which indices go where, and an <b>index task</b> stores a symbolic domain size, not one entry per point task (§3). Two partitions of the same kind compare for equality in constant time.</p>
+        <div class="breaks"><b>The cost of this economy:</b> only partition kinds with constant-time equality checks are usable — the paper presents two (<code>None</code>, <code>Tiling</code>) and notes others exist "with no additional technical insight," an assertion it doesn't independently substantiate (§3.1).</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="14" y="18" width="24" height="20" rx="3" fill="#E6E6F6" stroke="#5A61B4" stroke-width="1.8"/>
+          <rect x="46" y="18" width="24" height="20" rx="3" fill="#E6E6F6" stroke="#5A61B4" stroke-width="1.8"/>
+          <rect x="78" y="18" width="24" height="20" rx="3" fill="#E6E6F6" stroke="#5A61B4" stroke-width="1.8"/>
+          <rect x="14" y="58" width="24" height="20" rx="3" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="1.8"/>
+          <rect x="46" y="58" width="24" height="20" rx="3" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="1.8"/>
+          <rect x="78" y="58" width="24" height="20" rx="3" fill="#F7E1D8" stroke="#C0563B" stroke-width="1.8"/>
+          <path d="M26 38 v20 M58 38 v20" stroke="#9A8E7C" stroke-width="1.6"/>
+          <path d="M26 38 l64 20" stroke="#C0563B" stroke-width="1.8" stroke-dasharray="3 2"/>
+        </svg></div>
+        <span class="term">Fusibility · Own inbox only</span>
+        <h3>Each worker waits only on their own inbox</h3>
+        <p>On an assembly line, a station can start the moment it wants if it never needs a part from a <i>different</i> station's output bin — needing your own bin's previous contents is fine; reaching into a neighbor's bin means you must wait for them. Definition 3 formalizes exactly this: two tasks are <b>fusible</b> iff every processor's work in the second task depends on at most that same processor's work in the first — never a neighbor's (§4.1–4.2). Reach into a neighbor's bin (the dashed red line) and fusion is unsafe.</p>
+        <div class="breaks"><b>Where it's precise:</b> this is standard true/anti/reduction dependence analysis (Aho–Lam–Sethi–Ullman) lifted from statements to <i>per-processor</i> point tasks — the same three classic hazards, just checked processor by processor.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="30" y="16" width="80" height="44" rx="6" fill="#fff" stroke="#9A8E7C" stroke-width="2"/>
+          <text x="70" y="34" text-anchor="middle" font-family="monospace" font-size="8" fill="#6E6456">"prove it's safe</text>
+          <text x="70" y="46" text-anchor="middle" font-family="monospace" font-size="8" fill="#6E6456">from the blueprint alone"</text>
+          <path d="M70 60 v10" stroke="#9A8E7C" stroke-width="2"/>
+          <rect x="50" y="72" width="40" height="16" rx="3" fill="#F7E1D8" stroke="#C0563B" stroke-width="2"/>
+          <text x="70" y="83" text-anchor="middle" font-family="monospace" font-size="8" fill="#9a3a22">rejected anyway</text>
+        </svg></div>
+        <span class="term">Sound but not complete · The strict inspector</span>
+        <h3>An inspector who only signs off on what they can prove</h3>
+        <p>A strict building inspector approves a design only if they can prove safety directly from the blueprint — a design that's actually safe, but in a way the inspector's checklist can't verify, gets rejected anyway. Diffuse's four syntactic constraints are exactly this: <b>sound</b> (never approve an unsafe fusion) but <b>not complete</b> (some genuinely safe fusions get rejected because they don't match the checklist). Theorem 1 proves the sound half only — the paper explicitly disclaims completeness (§4.2.1, §4.3).</p>
+        <div class="breaks"><b>Where it's precise:</b> this is the same trade-off every conservative static analysis or sound type system makes — reject some valid programs in exchange for a proof that nothing unsafe ever slips through.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <rect x="20" y="20" width="40" height="30" rx="4" fill="#F7E1D8" stroke="#C0563B" stroke-width="2" stroke-dasharray="4 3"/>
+          <text x="40" y="38" text-anchor="middle" font-family="monospace" font-size="8" fill="#9a3a22">heap alloc</text>
+          <path d="M64 35 h14" stroke="#9A8E7C" stroke-width="2"/><path d="M64 35 l6 -4 M64 35 l6 4" stroke="#9A8E7C" stroke-width="2"/>
+          <rect x="82" y="20" width="38" height="30" rx="4" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <text x="101" y="38" text-anchor="middle" font-family="monospace" font-size="8" fill="#1f5b51">register</text>
+          <text x="70" y="72" text-anchor="middle" font-family="monospace" font-size="8" fill="#9A8E7C">proof: "never escapes"</text>
+        </svg></div>
+        <span class="term">Temporary elimination · Escape analysis</span>
+        <h3>Promoting a heap allocation to a register</h3>
+        <p>A compiler's escape analysis proves a value never outlives its function and promotes it from a heap allocation to a stack slot or register — no garbage collector needed, because nothing outside can ever see it. Temporary elimination is the distributed-systems version: if a store is entirely produced <i>and</i> consumed inside the fused region, no later pending task reads it, and the application holds no live reference to it (Definition 4), Diffuse demotes it from a real distributed array to a task-local, on-the-fly buffer — it's never actually allocated (§5.1).</p>
+        <div class="breaks"><b>Where it's precise:</b> exactly like escape analysis, all three conditions must hold — a single still-pending reader (like <code>norm</code> reading part of <code>w</code> in the paper's example) is enough to force real allocation.</div>
+      </div>
+
+      <div class="analogy reveal">
+        <div class="ill"><svg viewBox="0 0 140 96" fill="none">
+          <text x="35" y="40" text-anchor="middle" font-family="monospace" font-size="12" fill="#5A61B4">λx.x</text>
+          <text x="105" y="40" text-anchor="middle" font-family="monospace" font-size="12" fill="#5A61B4">λy.y</text>
+          <path d="M50 36 h20" stroke="#9A8E7C" stroke-width="1.6" stroke-dasharray="2 2"/>
+          <text x="70" y="30" text-anchor="middle" font-family="monospace" font-size="8" fill="#9A8E7C">≡</text>
+          <path d="M70 46 v14" stroke="#2C8C7C" stroke-width="2"/>
+          <rect x="46" y="64" width="48" height="18" rx="4" fill="#DCEFE9" stroke="#2C8C7C" stroke-width="2"/>
+          <text x="70" y="76" text-anchor="middle" font-family="monospace" font-size="8" fill="#1f5b51">λ0.0 (canonical)</text>
+        </svg></div>
+        <span class="term">Memoization · Alpha-equivalence</span>
+        <h3>λx.x and λy.y are "the same" program</h3>
+        <p><code>λx. x</code> and <code>λy. y</code> compute the identical function — they differ only in what the bound variable happens to be called. Diffuse treats re-running the same loop's task stream the same way: it canonicalizes each stream window to a De Bruijn-index-like numbering of stores (first store mentioned → 0, next new one → 1, …), so two windows that are "the same shape, different IDs" canonicalize identically and reuse the previous fusion decision without redoing the analysis (§5.2, Figure 7).</p>
+        <div class="breaks"><b>Where it's precise:</b> this is literally alpha-equivalence checking, not an analogy to it — the paper names it as such.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 4: HOW IT WORKS ============ -->
+<section class="tab-panel" id="tab-how">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">The full explanation</div>
+      <h2>How it actually works</h2>
+      <p class="sub">Section by section, with an interactive fusibility checker you can drive yourself.</p>
+    </div>
+
+    <div class="prose">
+      <h3>1 · Why is distributed fusion hard?</h3>
+      <p>Consider a five-point stencil update on a distributed 2D grid (Figure 1, §2) — a classic PDE-solver kernel:</p>
+      <pre class="sketch">avg = center + north + east + west + south
+work = 0.2 * avg
+center[:] = work</pre>
+      <p><code>center</code>, <code>north</code>, <code>east</code>, <code>west</code>, <code>south</code> are all <b>aliased views</b> of one distributed array, shifted by one cell in each direction. Executed literally, this issues one task per <code>+</code>, one for the scalar multiply, one for the copy — each allocating a fresh distributed temporary. Diffuse rewrites this into a single <code>FUSED_ADD_MULT</code> task — a 4× speedup on this loop body.</p>
+      <div class="callout warn"><span class="ic">⚠</span><div><b>But the final line doesn't fuse in — and this is the crux of the whole paper.</b> <code>center</code> is a subset of the same underlying array as the four views being read. Fusing the write to <code>center</code> into the task that reads them would create a single task concurrently writing to and reading from <i>overlapping</i> memory across node boundaries — a race, not merely an inefficiency. The question the whole paper answers formally: given a stream of distributed tasks that may arbitrarily alias, how do you decide, cheaply and correctly, which prefix can be fused without changing what any node observes (§2)?</div></div>
+    </div>
+
+    <div class="prose">
+      <h3>2 · The IR — making "cheaply" possible</h3>
+      <p>Checking fusibility by literally comparing, for every pair of processors, which array elements they touch would cost more as processor count grows — hopeless at 128 GPUs. Diffuse keeps everything <b>scale-free</b>: the size of the representation doesn't depend on how many pieces the data is partitioned into (§3).</p>
+      <p>Two constructs carry this. A <b>store</b> is a distributed array — an ID plus a rectangular shape (domain). A <b>partition</b> is a symbolic function from points in a launch domain to sub-stores, not an explicit table. The paper presents two kinds: <code>None</code> (replicate to every point) and <code>Tiling(shape, offset, proj)</code> — an affine tiling optionally preceded by a projection function that can drop dimensions, which is exactly how the aliased stencil views are expressed compactly. Two partitions of the same kind check for equality/aliasing in constant time (§3.1). An <b>index task</b> <code>IndexTask(domain, args)</code> represents a whole SPMD-style group of parallel point tasks, one per point in <code>domain</code>, each reading/writing/reducing its sub-store under a stated privilege — and its size on paper depends only on the symbolic domain, never an enumeration of tasks (§3.2).</p>
+      <div class="callout note"><span class="ic">⚖️</span><div><b>The trade-off:</b> only partition kinds supporting constant-time equality are usable. Legion itself supports arbitrary index-set partitions — more flexible, but then the aliasing queries needed for fusion scale with the degree of parallelism (§4.4, §8). Diffuse trades partition generality for compile-time-cheap analysis.</div></div>
+    </div>
+
+    <div class="prose">
+      <h3>3 · When can two tasks be fused?</h3>
+      <p>This is standard dependence analysis (following Aho, Lam, Sethi &amp; Ullman) lifted to a distributed, task-parallel setting — but asked per-processor: does the point task at processor p′ in the second index task depend on the point task at processor p in the first? For two point tasks with overlapping sub-stores of the same parent, a dependence exists under one of three classic hazards (Definition 1):</p>
+      <ul style="padding-left:20px;margin:0 0 12px">
+        <li><b>true-dep</b> (RAW/WAW-like): T₁ writes S, T₂ reads/writes/reduces overlapping S′.</li>
+        <li><b>anti-dep</b> (WAR-like): T₁ reads S, T₂ writes/reduces overlapping S′.</li>
+        <li><b>reduction-dep:</b> T₁ reduces S, T₂ reads/writes overlapping S′.</li>
+      </ul>
+      <p>(Two tasks that both merely read, or both reduce with the <i>same</i> associative-commutative operator, are exempt.) Collecting these into a dependence map D(T₁,T₂): domain(T₁) → 𝒫(domain(T₂)) gives:</p>
+      <div class="callout takeaway"><span class="ic">🍯</span><div><b>Definition 3 (fusibility).</b> T₁ and T₂ are fusible iff, for every point p, D(T₁,T₂)[p] ⊆ {p} — every processor's work in T₂ depends on at most its own corresponding work in T₁, never another processor's.</div></div>
+      <p>Materializing D directly costs the same as the thing being avoided, so Diffuse never computes it. Instead it uses four sufficient — <b>sound but not complete</b> — syntactic constraints, each checkable with the scale-free IR's constant-time partition-equality test (§4.2.1):</p>
+      <table class="tbl">
+        <thead><tr><th>Constraint</th><th>What it rules out</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">launch-domain-equivalence</td><td>Tasks over different-shaped/sized launch domains — data movement is generically needed to reconcile them.</td></tr>
+          <tr><td class="mono">true-dependence</td><td>A task writes S via partition P, a later task reads/writes S via a <i>different, aliasing</i> partition P′. Same partition is fine — still point-wise.</td></tr>
+          <tr><td class="mono">anti-dependence</td><td>A task reads S via P, a later task writes S via a different partition P′.</td></tr>
+          <tr><td class="mono">reduction</td><td>A task reduces into S, and any other task (before or after) reads or writes any view of S — you can't observe a partially-completed reduction.</td></tr>
+        </tbody>
+      </table>
+      <p>The fusion algorithm (§4.2.2) greedily scans the buffered window of pending tasks and finds the <b>longest prefix</b> satisfying all four constraints (a forward dataflow pass — familiar if you've implemented reaching-definitions or live-variable analysis), then builds one fused task whose argument list is the union of all stores touched (any store both read and written is promoted to Read-Write).</p>
+    </div>
+
+    <!-- INTERACTIVE: fusibility checker -->
+    <figure class="viz reveal">
+      <div class="viz-title">Try it: is this task pair fusible?</div>
+      <div class="viz-kicker">pick a scenario — watch which processor's dependence crosses a boundary</div>
+      <div class="fuse-viz">
+        <div class="fuse-row"><div class="rowlab">Task 1</div><div class="fuse-row" id="t1Row" style="flex:1"></div></div>
+        <div class="fuse-row"><div class="rowlab">Task 2</div><div class="fuse-row" id="t2Row" style="flex:1"></div></div>
+        <div class="preset-row" id="scenarioPresets">
+          <button class="tbtn on" data-scn="elementwise">Elementwise add (same partition)</button>
+          <button class="tbtn" data-scn="stencil">Stencil write-back (aliased view)</button>
+          <button class="tbtn" data-scn="domain">Mismatched launch domains</button>
+          <button class="tbtn" data-scn="reduction">Reduce, then read the partial sum</button>
+          <button class="tbtn" data-scn="commuting">Two commuting reductions (same op)</button>
+        </div>
+        <div class="pass-readout">
+          <div class="pstat">constraint checked<b id="fuseConstraint">—</b></div>
+          <div class="pstat">Definition 3 satisfied?<b id="fuseDef3">—</b></div>
+        </div>
+        <div class="pverdict opt" id="fuseVerdict">Pick a scenario…</div>
+      </div>
+      <figcaption><b>What you'll find:</b> in "elementwise add," every T2 processor depends only on the same-index T1 processor — Definition 3 holds. In "stencil write-back," T2·P2 needs data from a <i>neighboring</i> processor's output — exactly the aliasing that fails the anti-dependence constraint and blocks fusing <code>center[:] = work</code> into the read of <code>north/east/west/south</code> (§2, §4.2.1). "Two commuting reductions" is fusible even though every processor writes the same store, because reordering commuting reductions with the same operator changes nothing (§4.1).</figcaption>
+    </figure>
+
+    <div class="prose">
+      <h3>4 · Making fusion pay off — two supporting optimizations</h3>
+      <p><b>Temporary elimination.</b> Fusing tasks alone doesn't remove wasted allocations unless Diffuse can prove a store produced <i>and</i> consumed only inside the fused region can be demoted to a local, on-the-fly buffer. In the running example <code>z = 2.0*x; w = y+z; v = w**2; norm = np.linalg.norm(w[len(w)//2:])</code> (Figure 6), only <code>z</code> qualifies after fusing lines 4–6: <code>w</code> doesn't (the still-pending <code>norm</code> task reads a slice of it later), <code>v</code> doesn't (the application still holds a live reference). Formally (Definition 4), a store is temporary in a fused prefix iff every read inside is preceded by a covering write inside, no later pending task reads/reduces it, and the application holds no live reference — tracked via a split reference-counting scheme separating application-held from Diffuse-internal references.</p>
+      <p><b>Memoization.</b> Re-running the fusion analysis every loop iteration is wasteful if the task stream has the same shape each time, just with different store IDs. Diffuse recognizes this as an <b>alpha-equivalence</b> problem and canonicalizes each window to a De Bruijn-index-like numbering before comparing streams for isomorphism — two streams that canonicalize identically reuse the previous fusion decision (§5.2, Figure 7).</p>
+    </div>
+
+    <div class="prose">
+      <h3>5 · Kernel fusion — turning fused tasks into fast code</h3>
+      <p>Task fusion alone only removes runtime dispatch/allocation overhead — it doesn't make a task's inner loop faster. The paper found task fusion by itself gave <i>no</i> speedup on their benchmarks, because per-benchmark average task lengths (1.1–5.3 ms, Figure 9) already exceed Legion's roughly 1 ms per-task overhead threshold (§7, citing Task Bench). The savings have to come from the kernel level.</p>
+      <p>Library developers write a <b>generator function</b> per task (50–100 lines of C++, a one-time cost to library authors, §6.2) that emits an MLIR fragment for that task's body using the <code>memref</code>, <code>affine</code>, and <code>arith</code> dialects. When Diffuse fuses tasks, it builds one MLIR function containing each original task body spliced in program order, promotes distributed temporaries to task-local buffers (per §5.1), and runs standard polyhedral loop-fusion/parallelization passes to merge the separate loops into a single parallel loop — deleting the now-fully-local intermediate buffer — before lowering to GPU kernels or OpenMP (§6).</p>
+      <div class="callout why"><span class="ic">💡</span><div><b>Why this architecture is clean:</b> it separates reasoning about <i>distributed</i> communication (§3–5) from reasoning about <i>local</i> loop optimization (§6) — the loop optimizer never needs to know anything is distributed at all, and facts from the distributed analysis (e.g. "these two arrays provably don't alias") can be handed directly to the MLIR passes to unlock better code (§6.4). The specific kernel-fusion technique (polyhedral loop fusion) is explicitly orthogonal — other techniques could be substituted in.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 5: WORKED EXAMPLE ============ -->
+<section class="tab-panel" id="tab-example">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Follow the pipeline end to end</div>
+      <h2>Tracing Figure 6 / Figure 8</h2>
+      <p class="sub"><code>z = 2.0 * x; w = y + z; v = w ** 2</code> — four-element distributed vectors, all identically partitioned (no aliasing).</p>
+    </div>
+
+    <div class="card reveal">
+      <h3>① Fusibility (§4)</h3>
+      <ol class="seq">
+        <li>Say <code>x, y, z, w, v</code> are all partitioned identically (same launch domain, same tiling) — no aliasing between them.</li>
+        <li>Checking the four constraints across <code>MULT, ADD, POW</code>: launch domains match; nothing is written and then re-read/written through a <i>different</i> partition (true-dependence passes); nothing is read then written elsewhere (anti-dependence passes); no reductions are involved.</li>
+        <li>All three are fusible per Definition 3 — every point's output depends only on the same point's inputs, never a neighbor's.</li>
+      </ol>
+    </div>
+
+    <div class="card reveal">
+      <h3>② Temporary elimination (§5.1)</h3>
+      <ol class="seq">
+        <li>Is <code>z</code> temporary? It's entirely produced by <code>MULT</code> inside the fused region and consumed only by <code>ADD</code>, also inside the region (condition 1).</li>
+        <li>Nothing after the fused prefix reads or reduces it (condition 2).</li>
+        <li>If the application dropped its Python reference to <code>z</code> (as in the paper's <code>del</code>), condition 3 holds too — so <code>z</code> can be demoted from a real distributed array to a scratch buffer.</li>
+      </ol>
+      <div class="callout note"><span class="ic">📌</span><div>In the paper's own trace, <code>w</code> survives as non-temporary only because a later <code>norm</code> task still reads part of it. In this simplified 3-line version without that extra read, <code>w</code> would also qualify.</div></div>
+    </div>
+
+    <div class="card reveal">
+      <h3>③ Kernel-level fusion (§6, Figure 8)</h3>
+      <p style="color:var(--ink-soft);font-size:.95rem">Using Figure 8's actual two-task example, <code>c = a+b; e = c+d</code> — same mechanics, fewer variables. Each generator emits an MLIR loop like <code>for i in 0..dim: c[i] = a[i] + b[i]</code>.</p>
+      <ol class="seq">
+        <li>Fusing splices both loops into one function in program order — still two separate <code>affine.for</code> loops back to back.</li>
+        <li>Temporary elimination turns the distributed <code>c</code> into a stack-local <code>memref.alloc</code>.</li>
+        <li>Polyhedral fusion merges the two loops into <b>one</b> parallel loop computing <code>e[i] = (a[i]+b[i]) + d[i]</code> per iteration, with the intermediate value for <code>c[i]</code> never written to memory at all.</li>
+        <li>Concretely (illustrative numbers, not in the paper) — for <code>a=[1,2,3,4], b=[5,6,7,8], d=[1,1,1,1]</code>: unfused, you'd write <code>c=[6,8,10,12]</code> to memory, then read it back to compute <code>e=[7,9,11,13]</code> — two full memory passes. Fused, one pass computes <code>e[i]=a[i]+b[i]+d[i]</code> directly, e.g. <code>e[0] = 1+5+1 = 7</code> — same result, zero passes over <code>c</code>.</li>
+      </ol>
+      <div class="callout warn"><span class="ic">⚠</span><div><b>Common mistake:</b> assuming fusion changes <i>what</i> is computed. It doesn't — Theorem 1's whole point is that dependencies (and hence results) are preserved; only how many passes over memory / how many distributed tasks it takes changes.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 6: KEY RESULTS ============ -->
+<section class="tab-panel" id="tab-results">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">What the evaluation shows</div>
+      <h2>Key results</h2>
+      <p class="sub">All experiments are weak-scaling studies on NVIDIA A100 DGX SuperPOD nodes (8×A100 + 128-core AMD CPU + InfiniBand per node), averaging 10 of 12 runs after dropping the fastest/slowest (§7).</p>
+    </div>
+
+    <table class="tbl">
+      <thead><tr><th>Benchmark</th><th>Result</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr class="best"><td><b>Overall</b></td><td>1.86× geomean over unmodified applications (up to 128 GPUs); matches/exceeds PETSc by 1.4×; beats hand-optimized code by 1.23× geomean</td><td class="mono">Abstract, §1</td></tr>
+        <tr><td>Black-Scholes<br><span class="mono" style="font-size:.8em">67 fusible elementwise ops</span></td><td>10.7× at 128 GPUs — the fused program becomes one task, one GPU kernel, one pass over the data</td><td class="mono">§7.1, Fig. 10a</td></tr>
+        <tr><td>Dense Jacobi iteration<br><span class="mono" style="font-size:.8em">little fusable work</span></td><td>0.93×–1.08× of unfused performance — no meaningful regression from running the analysis when there's nothing to gain</td><td class="mono">§7.1, Fig. 10b</td></tr>
+        <tr><td>Conjugate Gradient (CG)</td><td>Diffuse-optimized <i>naturally-written</i> version outperforms both PETSc and Legate Sparse's own hand-fused version, by fusing AXPY/dot-product ops across loop iterations — no specific geomean stated</td><td class="mono">§7.1, Fig. 11a</td></tr>
+        <tr><td>BiCGSTAB</td><td>1.31× geomean over unfused, 1.15× geomean over PETSc</td><td class="mono">§7.1, Fig. 11b</td></tr>
+        <tr><td>Geometric Multi-Grid (GMG)</td><td>1.2× over the original Legate Sparse implementation</td><td class="mono">§7.1, Fig. 12a</td></tr>
+        <tr><td>CFD<br><span class="mono" style="font-size:.8em">2D Navier–Stokes channel flow</span></td><td>1.8×–2.3×, <i>higher</i> on 1 GPU than on many — no partitioning means longer fusable sequences; partitioning introduces aliasing-driven dependencies that block fusion</td><td class="mono">§7.1, Fig. 12b</td></tr>
+        <tr><td>TorchSWE<br><span class="mono" style="font-size:.8em">shallow-water equations, most complex</span></td><td>1.61× geomean over unfused, 1.35× geomean over a version hand-optimized with <code>numpy.vectorize</code></td><td class="mono">§7.1, Fig. 12c</td></tr>
+        <tr><td>Compilation overhead</td><td>25–119 iterations' worth of time to amortize warmup for CG/BiCGSTAB/GMG/CFD/TorchSWE; Black-Scholes pays back after 1 iteration; Jacobi's compile time is hidden under its already-expensive dense matvec</td><td class="mono">§7.2, Fig. 13</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout note"><span class="ic">⚖️</span><div><b>Read the CFD row twice:</b> more GPUs making a fusion-based system <i>slower relative to its own best case</i> is counterintuitive — worth not glossing over. And remember all of this is weak-scaling only (§7); the paper doesn't report how Diffuse behaves as GPU count grows for a <i>fixed</i> total problem size.</div></div>
+  </div>
+</section>
+
+<!-- ============ TAB 7: PRACTICE ============ -->
+<section class="tab-panel" id="tab-practice">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Check your understanding</div>
+      <h2>Practice</h2>
+      <p class="sub">Try each before opening the answer.</p>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q1</span>
+      <div class="qtext">Why does the stencil example (Figure 1) fuse the four additions and the multiply, but not the final copy <code>center[:] = work</code>?</div>
+      <details><summary>Show answer</summary><div class="ans">The four adds and the multiply operate on distinct partitions/views (<code>north</code>, <code>east</code>, <code>west</code>, <code>south</code>, and the scalar multiply's result) with no write-then-aliased-read pattern among them, so they satisfy all four fusion constraints. But <code>center</code> aliases the same underlying store as those views; fusing the write into the task that reads them would create simultaneous read/write access to overlapping data across processor boundaries — exactly what the anti-dependence constraint (and Definition 3) forbid (§2, §4.2.1).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q2</span>
+      <div class="qtext">What does "scale-free" mean for Diffuse's IR, and why does it matter?</div>
+      <details><summary>Show answer</summary><div class="ans">The size of the representation (partitions, index tasks) doesn't grow with the number of processors/GPUs — a partition is a symbolic function, not an explicit table; an index task stores a symbolic launch-domain shape, not per-processor entries. This matters because the fusion analysis runs on every batch of buffered tasks; if checking fusibility scaled with machine size, the analysis itself would become the bottleneck at high GPU counts (§3, §4.4).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q3</span>
+      <div class="qtext">The fusion constraints are described as "sound but not complete." What do those two terms mean here, and which one does Theorem 1 establish?</div>
+      <details><summary>Show answer</summary><div class="ans">Sound means: if the constraints say a sequence is fusible, it really is safe (no missed cross-processor dependence). Complete would mean: every actually-safe sequence is detected. Theorem 1 proves soundness only — by contradiction: assuming an undetected dependence exists, one of the four constraints would have had to fail. The paper explicitly disclaims completeness, noting application-specific knowledge could find more fusion opportunities (§4.2.1, §4.3).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q4</span>
+      <div class="qtext">In <code>z = 2*x; w = y+z; v = w**2</code>, why is <code>z</code> temporary but <code>v</code> is not, even though both are "produced inside" the fused task?</div>
+      <details><summary>Show answer</summary><div class="ans">Definition 4's third condition requires no live application references. <code>z</code> is deleted by the program before any pending task outside the fused prefix could read it, satisfying all three conditions. <code>v</code> is still referenced by the application after the fused region — the program could still launch a task reading <code>v</code> later — so it fails condition 3 and must remain a real distributed allocation (§5.1).</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q5</span>
+      <div class="qtext">Why did task fusion alone (without the MLIR kernel-fusion step) fail to produce speedups in the paper's own check?</div>
+      <details><summary>Show answer</summary><div class="ans">Task fusion only removes per-task dispatch/allocation overhead. The benchmarks' tasks average 1–5 ms (Figure 9), already above Legion's roughly 1 ms minimum effective task granularity — so there isn't much per-task overhead left to remove. The actual gains come from kernel fusion (§6), which reduces passes over memory and increases arithmetic intensity — a fundamentally different kind of saving.</div></details>
+    </div>
+
+    <div class="prob reveal">
+      <span class="ptag">Q6</span>
+      <div class="qtext">The CFD benchmark gets a <i>larger</i> speedup on 1 GPU than on 128 GPUs. Why doesn't more parallelism help fusion here?</div>
+      <details><summary>Show answer</summary><div class="ans">On a single GPU, the data isn't partitioned at all, so there's no aliasing between sub-stores held by different processors, and longer sequences of tasks can satisfy the fusion constraints. Once the array is partitioned across many GPUs, boundary/aliasing dependencies between neighboring partitions block some of the fusion that was possible in the unpartitioned case (§7.1).</div></details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 8: REFERENCE ============ -->
+<section class="tab-panel" id="tab-reference">
+  <div class="wrap">
+    <div class="panel-head">
+      <div class="kicker">Look it up</div>
+      <h2>Glossary, limitations &amp; further reading</h2>
+    </div>
+
+    <div class="subhead">Core terms</div>
+    <div class="gloss">
+      <div class="term-def"><b>Task-based runtime</b><span>A system (e.g. Legion) that a library targets by issuing tasks — units of work over data — rather than directly managing parallelism/communication itself.</span></div>
+      <div class="term-def"><b>Store</b><span>Diffuse's term for a distributed array — an ID plus a rectangular shape.</span></div>
+      <div class="term-def"><b>Partition</b><span>A symbolic mapping from points of a domain to sub-stores; <code>None</code> (replicated) and <code>Tiling</code> (affine block, possibly with a projection) are the two kinds discussed.</span></div>
+      <div class="term-def"><b>Index task / point task</b><span>An index task is a whole SPMD-style group of parallel tasks over a domain; a point task is the single task at one point of that domain.</span></div>
+      <div class="term-def"><b>Dependence map D(T₁,T₂)</b><span>Maps each point of T₁'s domain to the set of points in T₂'s domain whose execution depends on it.</span></div>
+      <div class="term-def"><b>Fusibility (Definition 3)</b><span>T₁, T₂ are fusible iff every point's dependence is at most on the same point — no cross-processor dependence.</span></div>
+      <div class="term-def"><b>Sound but not complete</b><span>The fusion constraints never approve an unsafe fusion (sound), but may reject some safe ones (incomplete).</span></div>
+      <div class="term-def"><b>Temporary store elimination</b><span>Demoting a store from a real distributed allocation to a task-local buffer once it's proven invisible outside the fused task.</span></div>
+    </div>
+
+    <div class="subhead">Supporting terms</div>
+    <div class="gloss">
+      <div class="term-def"><b>Projection function</b><span>A function applied to a partition's domain points before tiling, used to express aliased/replicated data (e.g. the stencil's shifted views).</span></div>
+      <div class="term-def"><b>Memoization via alpha-equivalence</b><span>Recognizing that two task-stream windows have the same shape up to renaming of store IDs (via De Bruijn-style canonicalization), to reuse a previous fusion decision.</span></div>
+      <div class="term-def"><b>MLIR / dialect</b><span>Compiler infrastructure whose programs mix typed sub-languages (dialects, e.g. <code>memref</code>, <code>affine</code>, <code>arith</code>) that shared passes can optimize and lower together.</span></div>
+      <div class="term-def"><b>Weak scaling</b><span>An experiment design where problem size grows with machine size so per-processor work stays constant; the reported metric is per-processor throughput.</span></div>
+      <div class="term-def"><b>Geo-mean (geometric mean)</b><span>The summary statistic the paper uses to aggregate speedups across benchmarks — appropriate for ratios, unlike an arithmetic mean.</span></div>
+      <div class="term-def"><b>cuPyNumeric / Legate Sparse</b><span>Distributed, GPU-accelerated drop-in replacements for NumPy and SciPy-sparse, built on Legion — the two libraries Diffuse was integrated into.</span></div>
+      <div class="term-def"><b>PETSc</b><span>An established MPI+C library for distributed sparse linear algebra, used as a hand-written performance baseline.</span></div>
+      <div class="term-def"><b>True / anti / reduction dependence</b><span>The three classic hazards (RAW/WAW-like, WAR-like, and reduction-vs-read/write) that a dependence between two overlapping sub-stores can fall under (Definition 1).</span></div>
+    </div>
+
+    <div class="subhead">Limitations &amp; open questions</div>
+    <div class="callout note"><span class="ic">📌</span><div><b>Stated by the authors:</b> the four fusion constraints are explicitly sound-but-incomplete (§4.2.1) — an analysis with domain/application-specific knowledge could fuse more than Diffuse does. Library developers must hand-write an MLIR generator function per task (50–100 lines of C++, §6.2) — a one-time cost per operation, described only qualitatively as "modest." Section 3.1 presents only <code>None</code> and <code>Tiling</code> partitions "for simplicity," asserting the full implementation supports more "with no additional technical insights" — an author assertion, not independently substantiated. The paper does not ablate temporary elimination or memoization (§7), arguing the former is "essential for speedup" and the latter "a requirement for a practical implementation" — reasonable, but no per-optimization quantitative evidence exists.</div></div>
+    <div class="callout note"><span class="ic">🔍</span><div><b>Other open items:</b> no experimental head-to-head with the closest prior work (Sundram et al. 2022) because that implementation targets an older, no-longer-comparable cuPyNumeric — instead the paper reports informally (no numbers) that task-fusion-alone gave no speedup on their benchmarks. All reported experiments are weak-scaling only (§7) — strong-scaling behavior for a fixed problem size isn't reported. Diffuse is not a general parallelizing compiler — it assumes the input task stream is already implicitly parallel and doesn't address automatic parallelization (§1).</div></div>
+
+    <div class="subhead">Related papers</div>
+    <div class="read-item reveal"><h4>Task Fusion in Distributed Runtimes <span class="diff med">medium</span></h4><div class="meta">Sundram, Lee, Aiken · PAW-ATM · 2022</div><p>The direct predecessor that first identified task fusion in this setting, without the formal model, new constraints, or correctness proof this paper adds.</p></div>
+    <div class="read-item reveal"><h4>Legion: Expressing Locality and Independence with Logical Regions <span class="diff hard">hard</span></h4><div class="meta">Bauer, Treichler, Slaughter, Aiken · SC · 2012</div><p>The underlying runtime Diffuse targets.</p></div>
+    <div class="read-item reveal"><h4>Weld: A Common Runtime for High Performance Data Analytics <span class="diff med">medium</span></h4><div class="meta">Palkar et al. · CIDR · 2017</div><p>The closest cross-library fusion system for shared-memory (single-node) settings — §8 discusses why extending it to distributed memory needs Diffuse's data model. See this library's own <a href="weld.html">field guide</a>.</p></div>
+    <div class="read-item reveal"><h4>MLIR: A Compiler Infrastructure for the End of Moore's Law <span class="diff hard">hard</span></h4><div class="meta">Lattner et al.</div><p>Background on the MLIR/dialect machinery used in §6.</p></div>
+    <div class="read-item reveal"><h4>Visibility Algorithms for Dynamic Dependence Analysis and Distributed Coherence <span class="diff hard">hard</span></h4><div class="meta">Bauer, Slaughter, Treichler, Lee, Garland, Aiken · PPoPP · 2023</div><p>The underlying Legion algorithms for dependence analysis that Diffuse's scale-free IR is designed to avoid needing directly.</p></div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span><b>Paper:</b> Yadav, Sundram, Lee, Garland, Bauer, Aiken, Kjolstad — "Composing Distributed Computations Through Task and Kernel Fusion" (ASPLOS 2025)</span>
+    <span><b>Source:</b> <a href="https://rohany.github.io/publications/asplos2025-fusion.pdf">rohany.github.io/publications/asplos2025-fusion.pdf</a></span>
+    <span><b>Format:</b> Interactive field guide · numbers verified against the source</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- TABS ---- */
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+  var panels = {};
+  document.querySelectorAll('.tab-panel').forEach(function(p){ panels[p.id.replace('tab-','')] = p; });
+  function activate(name){
+    btns.forEach(function(b){ b.classList.toggle('active', b.dataset.tab === name); });
+    Object.keys(panels).forEach(function(k){ panels[k].classList.toggle('active', k === name); });
+    requestAnimationFrame(function(){ runReveals(); maybeAnimateBars(); });
+    window.scrollTo({top:0, behavior: reduce ? 'auto' : 'smooth'});
+    if(history.replaceState) history.replaceState(null,'','#'+name);
+  }
+  btns.forEach(function(b){ b.addEventListener('click', function(){ activate(b.dataset.tab); }); });
+  var initial = (location.hash||'').replace('#','');
+  if(initial && panels[initial]) activate(initial);
+
+  /* ---- SCROLL REVEAL ---- */
+  var io = ('IntersectionObserver' in window) ? new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, {threshold:0.12, rootMargin:'0px 0px -40px 0px'}) : null;
+  function runReveals(){
+    document.querySelectorAll('.tab-panel.active .reveal:not(.in)').forEach(function(el){
+      if(reduce || !io){ el.classList.add('in'); }
+      else { var r = el.getBoundingClientRect(); if(r.top < window.innerHeight) el.classList.add('in'); else io.observe(el); }
+    });
+  }
+
+  /* ---- HEADLINE BARS ---- */
+  var barsDone = false, MAXP = 10.7;
+  function maybeAnimateBars(){
+    var fig = document.getElementById('headlineBars');
+    if(!fig || barsDone || !fig.closest('.tab-panel').classList.contains('active')) return;
+    document.querySelectorAll('#headlineBars .bar-fill').forEach(function(f,i){
+      var w = Math.min(100,(parseFloat(f.dataset.w)/MAXP)*100);
+      setTimeout(function(){ f.style.width = w + '%'; }, reduce ? 0 : 110*i);
+    });
+    fig.classList.add('shown');
+    barsDone = true;
+  }
+
+  /* ---- FUSIBILITY CHECKER ---- */
+  var SCENARIOS = {
+    elementwise: {
+      n: 4, t2dep: [0,1,2,3], special: null,
+      constraint: 'None violated — same partition throughout',
+      fusible: true,
+      note: '✓ Fusible. Every T2 processor reads only its own T1 output — an ordinary elementwise map (Definition 3 holds).'
+    },
+    stencil: {
+      n: 4, t2dep: [0,1,1,3], special: 2,
+      constraint: 'anti-dependence (T1 reads a view; T2 writes the same store via a different, aliasing partition)',
+      fusible: false,
+      note: '✗ Not fusible. T2·P2 needs T1·P1’s output — a neighboring processor. This is exactly why center[:] = work can’t fuse with the read of north/east/west/south (§2).'
+    },
+    domain: {
+      n: 4, n2: 3, t2dep: [0,1,2], special: null, domainMismatch: true,
+      constraint: 'launch-domain-equivalence (different-shaped launch domains)',
+      fusible: false,
+      note: '✗ Not fusible. Task 2’s launch domain doesn’t even match Task 1’s — reconciling different decompositions generically needs data movement (§4.2.1).'
+    },
+    reduction: {
+      n: 4, t2dep: [0,1,2,3], special: null, reductionConflict: true,
+      constraint: 'reduction (a task reduces into S; another task reads/writes any view of S)',
+      fusible: false,
+      note: '✗ Not fusible. You can’t observe a partially-completed reduction — reading a partial sum before every contribution has landed changes the result (§4.1).'
+    },
+    commuting: {
+      n: 4, t2dep: [0,1,2,3], special: null,
+      constraint: 'None violated — same associative-commutative operator, so reordering is exempt',
+      fusible: true,
+      note: '✓ Fusible. Two reductions into the same store with the same commutative operator are exempt from the reduction constraint — order never changes the result (§4.1).'
+    }
+  };
+
+  function renderFusion(key){
+    var s = SCENARIOS[key];
+    var t1 = document.getElementById('t1Row'), t2 = document.getElementById('t2Row');
+    var n1 = s.n, n2 = s.n2 || s.n;
+    var h1 = '', h2 = '';
+    for(var i=0;i<n1;i++){ h1 += '<div class="fuse-cell t1">T1<span class="sub">P'+i+'</span></div>'; }
+    for(var j=0;j<n2;j++){
+      var dep = s.t2dep[j];
+      var bad = (dep !== j) || s.reductionConflict || s.domainMismatch;
+      var sub = s.domainMismatch ? 'no matching P'+j+' in T1' : ('needs T1·P'+dep);
+      h2 += '<div class="fuse-cell '+(bad?'bad':'ok')+'">T2<span class="sub">P'+j+'</span><span class="sub">'+sub+'</span></div>';
+    }
+    t1.innerHTML = h1; t2.innerHTML = h2;
+    document.getElementById('fuseConstraint').textContent = s.constraint;
+    document.getElementById('fuseDef3').textContent = s.fusible ? 'Yes — D(T1,T2)[p] ⊆ {p}' : 'No — crosses a processor boundary';
+    var verd = document.getElementById('fuseVerdict');
+    verd.className = 'pverdict ' + (s.fusible ? 'opt' : 'bad');
+    verd.textContent = s.note;
+  }
+  var scenarioPresets = document.getElementById('scenarioPresets');
+  if(scenarioPresets){
+    scenarioPresets.addEventListener('click', function(e){
+      var b = e.target.closest('.tbtn'); if(!b) return;
+      document.querySelectorAll('#scenarioPresets .tbtn').forEach(function(x){ x.classList.toggle('on', x===b); });
+      renderFusion(b.dataset.scn);
+    });
+    renderFusion('elementwise');
+  }
+
+  /* ---- INIT ---- */
+  runReveals(); maybeAnimateBars();
+  window.addEventListener('scroll', runReveals, {passive:true});
+})();
+</script>
+<script src="../rate.js"></script>
+<footer class="legal-footer" style="max-width:900px;margin:44px auto 64px;padding:18px 22px;border-top:1px solid #E7DBC6;font-family:'Mulish',system-ui,sans-serif;font-size:.78rem;line-height:1.6;color:#9A8E7C"><b style="color:#6E6456">Personal study aid — not affiliated with the authors, institutions, or venues.</b> A non-commercial educational summary made for private study, commentary, and teaching. Any figures reproduced from the original paper remain the copyright of their respective authors/publishers and are shown under fair use (17 U.S.C. &sect;107) for commentary and education, each captioned with its source; all other diagrams and text are original, created by the site owner with AI assistance. No infringement is intended and no ownership is claimed over third-party material. Rights holders who wish a figure removed may <a href="https://github.com/katherinemohr/katherinemohr.github.io/issues" style="color:#5A61B4">open an issue</a> and it will be removed promptly.</footer>
+</body>
+</html>
