@@ -1,0 +1,77 @@
+---
+layout: default
+title: "Have We Met? - Katherine Mohr"
+---
+
+<article>
+  <section>
+    <header>
+      <a href="/">
+        <h3>katherinemohr.github.io</h3>
+      </a>
+    </header>
+  </section>
+
+  <h1 style="margin-bottom: 0;">Have We Met?</h1>
+  <section>
+    <p style="margin-top: 0;">
+      I love meeting new people!
+      <br/>
+      If I look familiar, it's possible we've run into each other at one of the events below :)
+    </p>
+
+    <h3>Events</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="text-align: left;">Event</th>
+          <th style="text-align: left;">Dates</th>
+          <th style="text-align: left;">Location</th>
+          <!-- <th style="text-align: left;">Notes</th> -->
+        </tr>
+      </thead>
+      <tbody>
+        {% if site.data.have_we_met %}
+        {% assign events = site.data.have_we_met | where_exp: "entry", "entry.type != 'recurring'" | sort: "sort_date" | reverse %}
+        {% for entry in events %}
+        <tr>
+          <td>
+            {% if entry.site %}<a href="{{ entry.site }}">{{ entry.event }}</a>{% else %}{{ entry.event }}{% endif %}
+          </td>
+          <td>{{ entry.dates }}</td>
+          <td>{{ entry.location }}</td>
+          <!-- <td>{{ entry.notes }}</td> -->
+        </tr>
+        {% endfor %}
+        {% endif %}
+      </tbody>
+    </table>
+
+    <h3>Recurring</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="text-align: left;">Event</th>
+          <th style="text-align: left;">Dates</th>
+          <th style="text-align: left;">Location</th>
+          <!-- <th style="text-align: left;">Notes</th> -->
+        </tr>
+      </thead>
+      <tbody>
+        {% if site.data.have_we_met %}
+        {% assign recurring = site.data.have_we_met | where_exp: "entry", "entry.type == 'recurring'" | sort: "sort_date" | reverse %}
+        {% for entry in recurring %}
+        <tr>
+          <td>
+            {% if entry.site %}<a href="{{ entry.site }}">{{ entry.event }}</a>{% else %}{{ entry.event }}{% endif %}
+          </td>
+          <td>{{ entry.dates }}</td>
+          <td>{{ entry.location }}</td>
+          <!-- <td>{{ entry.notes }}</td> -->
+        </tr>
+        {% endfor %}
+        {% endif %}
+      </tbody>
+    </table>
+  </section>
+</article>

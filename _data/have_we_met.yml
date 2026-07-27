@@ -1,0 +1,85 @@
+# Add an entry for each place/event where someone may have met me.
+# sort_date is used only to order entries (most recent first) - use YYYY-MM-DD
+# (the start date is fine for ranges). dates is the human-readable text shown on the page.
+# site is optional - a URL that makes the event name clickable.
+# type is optional - set to "recurring" for ongoing things like reading groups;
+# omit it (or set it to "event") for one-off events.
+# - event: "Event Name"
+#   dates: "Dates"
+#   sort_date: "YYYY-MM-DD"
+#   location: "Location"
+#   notes: "Notes"
+#   site: "https://example.com"
+#   type: "event"
+
+- event: "PLDI '24"
+  dates: "June 24-28, 2024"
+  sort_date: "2024-06-24"
+  location: "Copenhagen, Denmark"
+  site: "https://pldi24.sigplan.org"
+
+- event: "CppCon '26"
+  dates: "September 13-18, 2026"
+  sort_date: "2026-09-13"
+  location: "Aurora, CO"
+  site: "https://cppcon.org"
+
+- event: "ASPLOS '26"
+  dates: "March 22-26, 2026"
+  sort_date: "2026-03-22"
+  location: "Pittsburgh, PA"
+  site: "https://www.asplos-conference.org/asplos2026/"
+
+- event: "MIT PLR '23"
+  dates: "May 30, 2023"
+  sort_date: "2023-05-30"
+  location: "Cambridge, MA"
+  site: "https://plr.csail.mit.edu/plr2023.html"
+
+- event: "MIT PLR '24"
+  dates: "May 4, 2024"
+  sort_date: "2024-05-04"
+  location: "Cambridge, MA"
+  site: "https://plr.csail.mit.edu/plr2024.html"
+
+- event: "New England Systems Verification Day '24"
+  dates: "April 26, 2024"
+  sort_date: "2024-04-26"
+  location: "Cambridge, MA"
+  site: "https://svd.csail.mit.edu/2024/"
+
+# Recurring
+- event: "New York Systems Reading Group (NYSRG)"
+  dates: "January - August 2025"
+  sort_date: "2025-01-01"
+  site: "https://notes.ekzhang.com/events/nysrg"
+  type: "recurring"
+  location: "New York, NY"
+
+- event: "NYC Systems"
+  dates: "September 2024 - August 2025"
+  sort_date: "2024-09-01"
+  site: "https://nycsystems.xyz"
+  type: "recurring"
+  location: "New York, NY"
+
+- event: "MIT MLSys Reading Group"
+  site: "https://www.mlsys.ai"
+  dates: "January - May 2024"
+  sort_date: "2024-01-01"
+  type: "recurring"
+  location: "Cambridge, MA"
+
+- event: "SF Systems Club"
+  site: "https://www.sfsystemsclub.com"
+  dates: "April 2026 - ???"
+  sort_date: "2026-04-01"
+  type: "recurring"
+  location: "San Francisco, CA"
+
+- event: "South Bay Systems"
+  site: "https://luma.com/southbaysystems"
+  dates: "April 2026 - ???"
+  sort_date: "2026-04-01"
+  type: "recurring"
+  location: "SF Bay Area"
