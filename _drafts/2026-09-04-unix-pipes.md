@@ -1,7 +1,7 @@
 ---
 layout: post
-title: "something something unix pipes"
-subtitle: "Subtitle"
+title: "Unix pipe internals"
+subtitle: "Ceci est une (unix) pipe"
 tags:
   - unix
 hn:
@@ -9,20 +9,25 @@ draft: true
 ---
 
 
-## 
 
-## Background/Motivation
+### Named vs unnamed
 
-{% maincolumn 'assets/skeleton/solver_comparison.png' '' %}
+### how data gets passed
 
-## How is the research evaluated?
+### forking blah
 
-Evaluations!
 
-Probably more subsections!
+## Optimizations
 
-## Conclusion
+### Buffering
+https://jvns.ca/blog/2024/11/29/why-pipes-get-stuck-buffering/
 
-One paragraph tld;r.
+### Parallelism
+falls out of the fork()
 
-Fin.
+### Input size? 
+16KiB by default iirc if you're like catting or wtv
+
+### ksplice?
+
+### SIGPIPE early end
