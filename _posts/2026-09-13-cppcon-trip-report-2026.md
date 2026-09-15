@@ -7,6 +7,8 @@ tags:
 hn:
 ---
 
+NOTE: this is still a draft!
+
 I am spending this week in Aurora, CO at [CppCon](https://cppcon.org)! 
 
 If you know me, you know that I love C++, so I was so incredibly excited to be awarded the Hudson River Trading CppCon 2026 Scholarship a few months ago. Thank you to [HRT](https://www.hudsonrivertrading.com) for making it possible for me to attend this conference :) 
