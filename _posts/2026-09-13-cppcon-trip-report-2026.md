@@ -52,7 +52,6 @@ I'm already exhausted after day 0, but I've come away with a few goals for the w
 * Fun
   * Take more photos! Specifically, use up the film in the Instax camera HRT gave us.
   * Relatedly, get selfies with C++ folk in the community whom I look up to.
-  * Play in the waterpark.
   * Go on a hike.
-  * Film a [C++ CCG Booster Pack](https://ccg.boost.org/#home) unwrapping video.
+  * Play in the waterpark.
   * Rally a group to go to [Casa Bonita](https://www.casabonitadenver.com) with me.
