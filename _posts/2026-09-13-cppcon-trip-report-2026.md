@@ -7,7 +7,23 @@ tags:
 hn:
 ---
 
-NOTE: this is still a draft!
+---
+
+**author's note:** 
+
+this is very much still a draft! 
+
+if you found this after meeting me at cppcon
+(or alternately, if this page is somehow at the top of your “cppcon” search results like it is for my labmate{%- sidenote 'akshay-text' "<img src='/assets/cppcon26/akshay_text.png' alt='Text message asking why this blog is the second Kagi result for cppcon'>" -%}),
+you should instead look at [my cpp quiz](/2026/04/20/cpp-quiz.html). i put _way_ more effort into that.
+
+[cpp quiz](/2026/04/20/cpp-quiz.html)
+
+[cpp quiz](/2026/04/20/cpp-quiz.html)
+
+[cpp quiz](/2026/04/20/cpp-quiz.html)
+
+---
 
 I am spending this week in Aurora, CO at [CppCon](https://cppcon.org)! 
 
