@@ -29,7 +29,31 @@ I am spending this week in Aurora, CO at [CppCon](https://cppcon.org)!
 
 If you know me, you know that I love C++, so I was so incredibly excited to be awarded the Hudson River Trading CppCon 2026 Scholarship a few months ago. Thank you to [HRT](https://www.hudsonrivertrading.com) for making it possible for me to attend this conference :) 
 
-## Day 0:
+
+---
+
+**author's note pt 2:** 
+
+welp, i caught a cold
+
+until i actually feel like collecting my thoughts, here are some photos!
+
+
+{% maincolumn 'assets/cppcon26/banner.jpeg' '' %}
+
+{% maincolumn 'assets/cppcon26/panel.jpeg' '' %}
+
+{% maincolumn 'assets/cppcon26/godbolt.jpeg' '' %}
+
+{% maincolumn 'assets/cppcon26/polaroids.jpeg' '' %}
+
+{% maincolumn 'assets/cppcon26/hike.jpeg' '' %}
+
+{% maincolumn 'assets/cppcon26/sunset.jpeg' '' %}
+
+
+---
+<!--## Day 0:
 
 Sunday was before the true start of the conference, so I didn't do much besides grab lunch with the other HRT CppCon Scholarship recipients and hang out at the registration reception/poster session.
 
@@ -54,4 +78,4 @@ I'm already exhausted after day 0, but I've come away with a few goals for the w
   * Relatedly, get selfies with C++ folk in the community whom I look up to.
   * Go on a hike.
   * Play in the waterpark.
-  * Rally a group to go to [Casa Bonita](https://www.casabonitadenver.com) with me.
+  * Rally a group to go to [Casa Bonita](https://www.casabonitadenver.com) with me.-->
