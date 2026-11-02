@@ -11,7 +11,7 @@ layout: default
         <a href="mailto:kmohr@cs.stanford.edu">kmohr@cs.stanford.edu</a> /
         <a href="https://scholar.google.com/citations?user=5GfR8KQAAAAJ">Scholar</a> /
         <a href="https://www.linkedin.com/in/katherinemohr">LinkedIn</a> /
-        <a href="assets/Katherine_Mohr_Resume_Oct27.pdf">Resume</a> /
+        <a href="assets/resumes/KatherineMohrResume11226.pdf">Resume</a> /
         <a href="https://www.twitter.com/kmohr_">Twitter</a> /
         <a href="/have-we-met">Have We Met?</a>
       </p>
@@ -40,7 +40,7 @@ layout: default
         <li><a href="assets/publications/CS357S_Flan.pdf">mapped data to heterogeneous memories</a>
         (and separately, struggled to understand the internals of <a href="https://github.com/rapidsai/cudf/tree/main">cudf</a>)
         with <a href="http://fredrikbk.com">Fred</a>, and</li>
-        <li>built an <a href="https://arxiv.org/pdf/2606.26138">early prototype</a> of a server that uses both DRAM and "Long-term RAM" with <a href="https://csl.stanford.edu/~pal/">Phil</a>.</li>
+        <li>built a <a href="https://doi.org/10.1145/3831664.3837780">prototype</a> of a server that uses both DRAM and "Long-term RAM" with <a href="https://csl.stanford.edu/~pal/">Phil</a>.</li>
       </ul>
     </p>
 
@@ -74,9 +74,24 @@ layout: default
           <a href="/pub/{{ key }}/" style="text-decoration: none; color: inherit;">
             <b>{{ pub.title }}</b>
           </a>
+          {% if pub.doi %}
+          <span style="font-size: 0.7em;">
+            <a href="{{ pub.doi | escape }}">DOI</a>
+          </span>
+          {% endif %}
+          {% if pub.url %}
+          <span style="font-size: 0.7em;">
+            <a href="{{ pub.url | escape }}">Article</a>
+          </span>
+          {% endif %}
           {% if pub.pdf %}
           <span style="font-size: 0.7em;">
             <a href="{{ pub.pdf }}">PDF</a>
+          </span>
+          {% endif %}
+          {% if pub.preprint_pdf %}
+          <span style="font-size: 0.7em;">
+            <a href="{{ pub.preprint_pdf | escape }}">Preprint</a>
           </span>
           {% endif %}
           {% if pub.poster %}

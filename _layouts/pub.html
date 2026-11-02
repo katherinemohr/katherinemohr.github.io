@@ -28,18 +28,34 @@ tags: publication
 
   <div class="post-content">
     <h2>Abstract</h2>
-    <section
-      <p>{{ pub.abstract }}</p>
+    <section>
+      {{ pub.abstract }}
     </section>
 
-    {% if pub.url %}
+    {% if pub.doi %}
+    <h2>DOI</h2>
+    <p><a href="{{ pub.doi | escape }}">{{ pub.doi | escape }}</a></p>
+    {%- endif -%}
+
+    {% if pub.url or pub.pdf %}
     <h2>Article</h2>
-    <p><a href="{{ pub.url }}">Article URL</a></p>
+    {% if pub.url %}
+    <p><a href="{{ pub.url | escape }}">Article</a></p>
     {%- endif -%}
 
     {% if pub.pdf %}
-    <h2>Article</h2>
-    <p><a href="{{ pub.pdf }}">PDF Link</a></p>
+    <p><a href="{{ pub.pdf }}">PDF</a></p>
+    {%- endif -%}
+    {%- endif -%}
+
+    {% if pub.preprint_pdf %}
+    <h2>Preprint</h2>
+    <p><a href="{{ pub.preprint_pdf | escape }}">Preprint</a></p>
+    {%- endif -%}
+
+    {% if pub.poster %}
+    <h2>Poster</h2>
+    <p><a href="{{ pub.poster | escape }}">Poster</a></p>
     {%- endif -%}
 
     {% if pub.appendix %}

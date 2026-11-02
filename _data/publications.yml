@@ -1,3 +1,6 @@
+# Optional links: doi is a full https://doi.org/... URL; preprint_pdf is a
+# PDF URL or a local path such as /assets/publications/paper-preprint.pdf.
+# Leave either field empty to hide its link.
 arom:
   title: "The Kernel's Write: Application Read-Only Memory"
   abstract: "<p>
@@ -16,8 +19,10 @@ arom:
     - hsshim
     - kmohr
     - pal
-  pdf: https://arxiv.org/pdf/2606.26138
-  poster: assets/publications/AROM_LtRAM.pdf
+  pdf: assets/publications/arom.pdf
+  doi: https://doi.org/10.1145/3831664.3837780
+  preprint_pdf: assets/publications/arom_preprint.pdf
+  poster: assets/publications/AROM_Poster.pdf
 
 arca:
   title: "Continuation-Centric Computing with Arca"
@@ -34,7 +39,10 @@ arca:
   # booktitle: "Proceedings of the 19th USENIX Conference on Operating Systems Design and Implementation"
   # location: "Seattle, WA, USA"
   # series: "OSDI '26"
+  url: https://www.usenix.org/conference/osdi26/presentation/srivatsan
   pdf: /assets/publications/osdi26.pdf
+  doi:
+  preprint_pdf:
   authors:
     - asrivatsan
     - ydeng
@@ -52,5 +60,7 @@ mengthesis:
   venue: "M.Eng. Thesis"
   year: 2024
   pdf: https://dspace.mit.edu/bitstream/handle/1721.1/157170/mohr-kmohr-meng-eecs-2024-thesis.pdf?sequence=1&isAllowed=y
+  doi:
+  preprint_pdf:
   authors:
     - kmohr
