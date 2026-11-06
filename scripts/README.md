@@ -1,4 +1,19 @@
-# Clog Script
+# Link Scripts
+
+## Hacker News
+
+Fetch and confirm a page title, then open Hacker News's prefilled submission
+form in your default browser:
+
+```bash
+./hn.py https://example.com
+```
+
+You must be logged in to Hacker News in that browser. Review the title and URL,
+then click `submit` to finish posting. `post_to_hacker_news(url, title)` is kept
+separate so it can also be called from `clog.py` in a future `--hn_post` flow.
+
+## Clog
 
 A Python script for adding website entries to the clog database.
 
